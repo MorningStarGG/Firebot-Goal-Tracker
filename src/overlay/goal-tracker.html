@@ -1,0 +1,2578 @@
+<div class="goalTrackerOverlay">
+    <style>
+        /* Base Reset */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Montserrat', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        }
+
+        /* Default Theme */
+        :root {
+            --progressColor: #a60000;
+            --trackColor: rgba(34, 34, 34, 0.95);
+            --goalColor: #ffffff;
+            --milestoneColor: #ffffff;
+            --progressBoxColorOne: #2a2a2a;
+            --progressBoxColorTwo: #1a1a1a;
+            --goalTitleColor: #e3e3e3;
+            --countdownBackgroundColorOne: #2a2a2a;
+            --countdownBackgroundColorTwo: #1a1a1a;
+            --countdownTitleColor: rgba(227, 227, 227, 0.95);
+            --countdownTimeBackground: rgba(166, 0, 0, 0.95);
+            --countdownTimeColor: #ffffff;
+            --countdownTimeShadow: 0 0 20px rgba(166, 0, 0, 0.3);
+            --infoSectionBackgroundColorOne: #2a2a2a;
+            --infoSectionBackgroundColorTwo: #1a1a1a;
+            --donorTextColor: #e3e3e3;
+            --largestTextColor: #e3e3e3;
+            --additionalTextColor: #e3e3e3;
+            --infoDonorBackground: rgba(255, 255, 255, 0.03);
+            --infoLargestBackground: rgba(255, 255, 255, 0.02);
+            --infoAdditionalBackground: rgba(255, 255, 255, 0.03);
+            --infoBorderColor: rgba(227, 227, 227, 0.1);
+            --animationHighlight: #a60000;
+            --animationBackgroundColorOne: #111111;
+            --animationBackgroundColorTwo: #1a1a1a;
+            --animationBorder: #a60000;
+            --animationText: #ffffff;
+            --animationShadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+        }
+
+        /* Extra Life Theme */
+        :root[data-theme="extraLife"] {
+            --progressColor: #00B4FF;
+            --trackColor: rgba(27, 40, 56, 0.95);
+            --goalColor: #ffffff;
+            --milestoneColor: #ffffff;
+            --progressBoxColorOne: #1B2838;
+            --progressBoxColorTwo: #2A475E;
+            --goalTitleColor: #e3e3e3;
+            --countdownBackgroundColorOne: #1B2838;
+            --countdownBackgroundColorTwo: #2A475E;
+            --countdownTitleColor: rgba(227, 227, 227, 0.95);
+            --countdownTimeBackground: rgba(0, 180, 255, 0.95);
+            --countdownTimeColor: #ffffff;
+            --countdownTimeShadow: 0 0 20px rgba(0, 180, 255, 0.3);
+            --infoSectionBackgroundColorOne: #1B2838;
+            --infoSectionBackgroundColorTwo: #2A475E;
+            --donorTextColor: #e3e3e3;
+            --largestTextColor: #e3e3e3;
+            --additionalTextColor: #e3e3e3;
+            --infoDonorBackground: rgba(255, 255, 255, 0.03);
+            --infoLargestBackground: rgba(255, 255, 255, 0.02);
+            --infoAdditionalBackground: rgba(255, 255, 255, 0.03);
+            --infoBorderColor: rgba(227, 227, 227, 0.1);
+            --animationHighlight: #00B4FF;
+            --animationBackgroundColorOne: #1B2838;
+            --animationbackgroundColorTwo: #2A475E;
+            --animationBorder: #00B4FF;
+            --animationText: #ffffff;
+            --animationShadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+        }
+
+        /* Document Setup */
+        .goalTrackerOverlay {
+            margin: 0 auto;
+            padding: 0;
+            background-color: transparent !important;
+            overflow: hidden;
+            width: 475px;
+            min-height: 100%;
+            display: flex !important;
+            align-items: flex-start;
+            justify-content: center;
+            position: absolute;
+            left: 50%;
+            transform: translateX(-50%);
+            top: 5px;
+        }
+
+        /* Widget Base */
+        .widget {
+            position: relative;
+            width: 100%;
+            height: auto;
+            min-height: min-content;
+            margin: 0 auto;
+            background-color: transparent;
+            border-radius: 12px;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            padding: 0 20px;
+            transform: translate3d(0, 0, 0);
+            -webkit-transform: translate3d(0, 0, 0);
+            opacity: 0;
+            visibility: visible;
+            transition: height 0.5s ease-in-out, opacity 0.3s ease-in-out;
+        }
+
+        .widget.initialized {
+            opacity: 1;
+        }
+
+        /* Countdown Section */
+        .countdown {
+            overflow: hidden;
+            border-radius: 12px;
+            margin-top: 2px;
+            margin-left: 0;
+            margin-right: 0;
+            background: linear-gradient(135deg, var(--countdownBackgroundColorOne), var(--countdownBackgroundColorTwo));
+            position: relative;
+            padding: 0;
+            color: #e3e3e3;
+            text-align: center;
+            height: 140px;
+            flex: 0 0 auto;
+            transition: max-height 0.5s ease-in-out,
+                opacity 0.5s ease-in-out,
+                margin 0.5s ease-in-out,
+                padding 0.5s ease-in-out,
+                border-radius 0.5s ease-in-out;
+            width: 100%;
+        }
+
+        .countdown:not(.roll-hidden),
+        .info-section:not(.hidden) {
+            max-height: 500px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        }
+
+        /* Hidden States */
+        .countdown.roll-hidden,
+        .info-section.hidden {
+            max-height: 0;
+            opacity: 0;
+            margin: 0;
+            padding: 0;
+            border-radius: 12px;
+        }
+
+        /* Countdown Content */
+        .countdown-content {
+            display: none;
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            padding: 20px;
+            border-radius: inherit;
+            background-clip: padding-box;
+        }
+
+        .countdown-content.visible {
+            display: block;
+        }
+
+        .countdown-title {
+            font-size: 1.75rem;
+            font-weight: 700;
+            margin-bottom: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--countdownTitleColor);
+            text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+        }
+
+        .time {
+            font-family: 'Montserrat', monospace;
+            font-size: 2rem;
+            font-weight: 700;
+            background: var(--countdownTimeBackground);
+            color: var(--countdownTimeColor);
+            padding: 12px 20px;
+            border-radius: 16px;
+            display: inline-block;
+            box-shadow: var(--countdownTimeShadow);
+            min-width: 75%;
+        }
+
+        /* Info Section */
+        .info-section {
+            overflow: hidden;
+            border-radius: 12px;
+            margin-top: 2px;
+            margin-left: 0;
+            margin-right: 0;
+            background: linear-gradient(135deg, var(--infoSectionBackgroundColorOne), var(--infoSectionBackgroundColorTwo));
+            position: relative;
+            height: auto;
+            min-height: 140px;
+            width: 100%;
+            transition: max-height 0.5s ease-in-out,
+                opacity 0.5s ease-in-out,
+                margin 0.5s ease-in-out,
+                padding 0.5s ease-in-out,
+                border-radius 0.5s ease-in-out;
+        }
+
+        .info-section>div {
+            border-top: 1px solid var(--infoBorderColor);
+            transform: translateY(0);
+            opacity: 1;
+            transition: transform 0.5s ease-in-out, opacity 0.5s ease-in-out;
+            background-clip: padding-box;
+        }
+
+        .info-section>div:first-child {
+            border-top: none;
+        }
+
+        .info-section.hidden>div {
+            transform: translateY(20px);
+            opacity: 0;
+        }
+
+        /* Logo Styles */
+        .logo {
+            display: block;
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            padding: 0;
+            background: none;
+            border-radius: inherit;
+        }
+
+        .logo.hidden {
+            display: none;
+        }
+
+        /* Progress Section */
+        .progress-section {
+            width: 100%;
+            margin: 2px;
+        }
+
+        .progress-title {
+            padding: 10px 20px;
+            color: var(--goalTitleColor);
+            font-weight: 700;
+            font-size: 1.3rem;
+            flex: 0 0 auto;
+            text-align: center;
+            display: block;
+            background: linear-gradient(135deg, var(--progressBoxColorOne), var(--progressBoxColorTwo));
+            border-radius: 12px 12px 0 0;
+            margin: 0;
+            width: 100%;
+        }
+
+        .progress-title.hidden {
+            display: none;
+        }
+
+        .progress-title:not(.hidden)~#progressContainer #progressBar {
+            border-radius: 0 25px 25px 0;
+        }
+
+        .progress-title.hidden~#progressContainer #progressBar {
+            border-radius: 25px;
+        }
+
+        /* Progress Container */
+        #progressContainer {
+            position: relative;
+            height: 40px;
+            margin: 0;
+            border-radius: 25px;
+            overflow: hidden;
+            flex: 0 0 auto;
+            width: 100%;
+        }
+
+        #progressBackground {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(227, 227, 227, 0.1);
+            border-radius: 25px;
+            opacity: var(--container-opacity, 1);
+            transition: opacity 0.3s ease;
+        }
+
+        #progressTrack {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: var(--trackColor);
+            z-index: 1;
+            box-shadow: inset 0 -1px 1px rgba(34, 34, 34, 0.3)
+        }
+
+        #progressBar {
+            position: absolute;
+            top: 0;
+            left: 0;
+            height: 100%;
+            background: var(--progressColor);
+            transition: width 1s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: 0 0 20px rgba(166, 0, 0, 0.3);
+            z-index: 2;
+            border-radius: 25px;
+        }
+
+        /* Progress Bar Animation */
+        #progressBar::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: linear-gradient(90deg,
+                    rgba(255, 255, 255, 0) 0%,
+                    rgba(255, 255, 255, 0.1) 50%,
+                    rgba(255, 255, 255, 0) 100%);
+            animation: shimmer 3s linear infinite;
+        }
+
+        @keyframes shimmer {
+            0% {
+                transform: translateX(-100%);
+            }
+
+            100% {
+                transform: translateX(100%);
+            }
+        }
+
+        /* Status Labels */
+        #donationStatus {
+            position: absolute;
+            right: 12px;
+            color: var(--goalColor);
+            font-weight: 700;
+            top: 50%;
+            transform: translateY(-50%);
+            text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+            font-size: 24px;
+            z-index: 3;
+            text-align: right;
+            width: auto;
+        }
+
+        #milestoneLabel {
+            position: absolute;
+            left: 5px;
+            height: 100%;
+            padding: 4px 12px;
+            color: var(--milestoneColor);
+            font-size: 24px;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            z-index: 3;
+        }
+
+        /* Info Section Items */
+        #donorInfo,
+        #largestDonation,
+        #additionalInfo {
+            padding: 16px 20px;
+            text-align: center;
+            font-size: 1.25rem;
+            font-weight: 600;
+            line-height: 1.4;
+            word-wrap: break-word;
+        }
+
+        #donorInfo {
+            background: var(--infoDonorBackground);
+            color: var(--donorTextColor);
+        }
+
+        #largestDonation {
+            background: var(--infoLargestBackground);
+            color: var(--largestTextColor);
+        }
+
+        #additionalInfo {
+            background: var(--infoAdditionalBackground);
+            color: var(--additionalTextColor);
+        }
+
+        /* Donation Animation */
+        #donationAnimation {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 100%;
+            margin: 0;
+            padding: 16px 24px;
+            background: linear-gradient(135deg, var(--animationBackgroundColorOne), var(--animationBackgroundColorTwo));
+            color: var(--animationText);
+            border-radius: inherit;
+            text-align: center;
+            font-weight: 700;
+            display: none;
+            text-shadow: var(--animationShadow);
+            z-index: 10;
+            border-top: 2px solid var(--animationBorder);
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            font-size: 1.3rem;
+            opacity: 0;
+            transform: translateY(20px);
+            transition: opacity 0.3s ease-out, transform 0.3s ease-out;
+        }
+
+        #donationAnimation.show {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        #donationAnimation .message-content {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            width: 100%;
+            line-height: 1.4;
+        }
+
+        #donationAnimation .highlight {
+            color: var(--animationHighlight);
+            font-weight: 700;
+        }
+
+        /* Countdown Below Layout */
+        .widget.countdown-below .countdown {
+            order: 2;
+            height: 120px;
+            margin-top: 2px;
+            border-radius: 12px;
+        }
+
+        .widget.countdown-below .progress-section {
+            order: 1;
+            margin-bottom: 0;
+        }
+
+        .widget.countdown-below .info-section {
+            order: 3;
+            margin-top: 2px;
+            border-radius: 12px;
+            flex-shrink: 0;
+            position: relative;
+        }
+
+        .widget.countdown-below .countdown-content {
+            padding: 15px;
+        }
+
+        .widget.countdown-below .countdown-title {
+            font-size: 1.5rem;
+            margin-bottom: 8px;
+        }
+
+        .widget.countdown-below .time {
+            font-size: 1.75rem;
+            padding: 8px 16px;
+        }
+
+        /* Track Alignment Styles */
+        .widget.align-to-track {
+            background-color: transparent;
+            box-shadow: none;
+            border: none;
+            width: 100%;
+            margin: 0;
+            padding: 0 20px;
+        }
+
+        .widget.align-to-track #progressContainer {
+            margin: 0;
+            width: 100%;
+            border-radius: 16px;
+        }
+
+        .widget.align-to-track .countdown,
+        .widget.align-to-track .info-section,
+        .widget.align-to-track .info-section>div,
+        .widget.align-to-track #donationAnimation {
+            width: 100%;
+            margin: 0;
+            border-radius: 16px;
+            background: var(--trackColor);
+        }
+
+        .widget.align-to-track #progressBar {
+            border-radius: 16px;
+        }
+
+        .widget.align-to-track .countdown.roll-hidden,
+        .widget.align-to-track .info-section.hidden {
+            border-radius: 16px;
+        }
+
+        /* Make sure progress title aligns correctly in both modes */
+        .widget:not(.align-to-track) .progress-title {
+            width: 100%;
+        }
+
+        .widget.align-to-track .progress-title {
+            background: var(--trackColor);
+            margin: 0;
+            border-radius: 16px 16px 0 0;
+        }
+
+        /* Update progress container borders when title is shown/hidden */
+        .progress-title:not(.hidden)+#progressContainer {
+            border-radius: 0 0 16px 16px;
+            margin-top: 0;
+        }
+
+        .progress-title.hidden+#progressContainer {
+            border-radius: 25px;
+        }
+
+        /* Track Alignment for Donation Animation */
+        .widget.align-to-track #donationAnimation {
+            position: absolute;
+            width: 100%;
+            left: 0;
+            right: 0;
+            height: 100%;
+            margin: 0;
+            background: var(--trackColor);
+            border-radius: inherit;
+        }
+
+        .widget.align-to-track #donationAnimation.show {
+            display: flex;
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        /* Make sure all sections maintain full width when not aligned to track */
+        .widget:not(.align-to-track) .countdown,
+        .widget:not(.align-to-track) .info-section,
+        .widget:not(.align-to-track) .progress-title,
+        .widget:not(.align-to-track) #progressContainer {
+            width: 100%;
+        }
+
+        .animation-header {
+            margin-bottom: 8px;
+        }
+
+        .animation-subheader {
+            background: linear-gradient(135deg, var(--animationBackgroundColorOne), var(--animationBackgroundColorTwo));
+            padding: 12px 16px;
+            border-radius: 8px;
+            margin-top: 8px;
+        }
+
+        .highlight {
+            color: var(--animationHighlight);
+            font-weight: 700;
+        }
+    </style>
+
+    <div id="widget" class="widget">
+        <div class="countdown">
+            <div class="countdown-content visible">
+                <div id="countdownTitle" class="countdown-title"></div>
+                <div id="timeRemaining" class="time">00d 00h 00m 00s</div>
+            </div>
+            <img src="" class="logo hidden" alt="">
+        </div>
+
+        <div class="progress-section">
+            <div id="progressTitle" class="progress-title"></div>
+            <div id="progressContainer">
+                <div id="progressBackground"></div>
+                <div id="progressTrack">
+                    <div id="progressBar"></div>
+                    <div id="milestoneLabel" class="info-item"></div>
+                    <div id="donationStatus" class="info-item">$0/$0</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="info-section hidden">
+            <div id="donorInfo" class="info-item"></div>
+            <div id="largestDonation" class="info-item"></div>
+            <div id="additionalInfo" class="info-item"></div>
+            <div id="donationAnimation"></div>
+        </div>
+    </div>
+
+    <script>
+        /* Main Configuration Object */
+        const CONFIG = {
+            // Core Settings
+            streamInfo: {
+                startDate: "2024-11-26",
+                startTime: "08:00",
+                endDate: "2024-11-27",
+                endTime: "08:00"
+            },
+
+            // Mode Settings
+            mode: {
+                useMilestonesAsGoals: true,
+                separateInfoColors: false,
+                infoSectionCycle: true,
+                showInfoSection: true,
+                useCustomLargestMessage: false,
+                useCustomRecentMessage: false,
+                showDonationAnimation: true,
+                showLogoAnimation: true,
+                showDonationTimestamp: false,
+                useCustomDonationData: true, // Uses the JSON data from recentDonations below instead of the 'current' setting below
+                largestDonationTieMode: 'all', // 'all' or 'recent'
+                defaultDonationGoal: 550,
+                customVariables: {
+                    current: '250.97',
+                    goal: '300',
+                    recentDonations: [{
+                        "donations": [
+                            {
+                                "name": "John Doe",
+                                "individual_donations": [
+                                    {
+                                        "amount": 50,
+                                        "timestamp": "2024-11-06T12:30:00Z"
+                                    },
+                                    {
+                                        "amount": 75,
+                                        "timestamp": "2024-11-05T15:45:00Z"
+                                    }
+                                ],
+                                "total_amount": 125,
+                                "total_donations": 2
+                            },
+                            {
+                                "name": "Jane Smith",
+                                "individual_donations": [
+                                    {
+                                        "amount": 100,
+                                        "timestamp": "2024-11-06T09:20:00Z"
+                                    },
+                                    {
+                                        "amount": 50,
+                                        "timestamp": "2024-11-04T14:00:00Z"
+                                    }
+                                ],
+                                "total_amount": 150,
+                                "total_donations": 2
+                            }
+                        ],
+                        "overall_total": {
+                            "amount": 435.42,
+                            "donation_count": 4
+                        }
+                    }],
+                    jsonVariableName: 'goalJSON',
+                    currentVariableName: 'goalCurrent',
+                    goalVariableName: 'goalGoal',
+                }
+            },
+
+            // Display Options
+            display: {
+                progressBar: {
+                    hideBeforeStreamStartTime: false,
+                    hideAfterStreamEndTime: false,
+                    showTitle: false,
+                    showPercentage: true,
+                    opacity: 1
+                },
+                countdown: {
+                    countdownPosition: 'below', // Can be 'above' or 'below'
+                    showCountdown: true,
+                    countdownCycle: false
+                },
+                showHighlight: true
+            },
+
+            // Content Configuration
+            content: {
+                // Milestone Goals
+                milestones: [
+                    { title: "Cosplay GOAL", amount: 300 },
+                    { title: "Karaoke GOAL", amount: 400 },
+                    { title: "Horror GOAL", amount: 500 },
+                    { title: "STUPID GOAL", amount: 600 },
+                    { title: "EXTRA STUPID", amount: 700 },
+                    { title: "REAPER PARTY", amount: 0 },
+                    { title: "Phasmophobia", amount: 0 },
+                    { title: "??", amount: 0 }
+                ],
+
+                // Text Templates for Both Modes
+                templates: {
+                    extraLife: {
+                        titles: {
+                            streamBegins: "EXTRA LIFE STREAM BEGINS",
+                            streamRunning: "EXTRA LIFE STREAM TIME LEFT",
+                            streamEnded: "EXTRA LIFE TOTAL TIME LIVE",
+                            progressBar: "Extra Life Fundraising Progress",
+                            heading: 'Extra Life Stream Event!',
+                            subheading: 'Join us in supporting children\'s hospitals!'
+                        },
+                        donations: {
+                            noDonations: "No donations yet!",
+                            defaultDonorName: "Anonymous",
+                            largestDonationFormat: "Largest Donation: ${amount} by {name}",
+                            donationFormat: "{name} donated ${amount}",
+                            supportMessage: "Support Children's Miracle Network Hospitals",
+                            recentDonations: "Recent Donations",
+                            customRecentMessage: "{name} donated ${amount}",
+                            customLargestMessage: "Largest Donation: ${amount} by {name}"
+                        },
+                        colors: {
+                            progressColor: '#00B4FF',
+                            trackColor: 'rgba(27, 40, 56, 0.95)',
+                            goalColor: '#ffffff',
+                            milestoneColor: '#ffffff',
+                            progressBoxColorOne: '#1B2838',
+                            progressBoxColorTwo: '#2A475E',
+                            goalTitleColor: '#e3e3e3'
+                        },
+                        animation: {
+                            animationHighlight: '#00B4FF',
+                            animationBackground: 'linear-gradient(135deg, #1B2838, #2A475E)',
+                            animationBorder: '#00B4FF',
+                            animationText: '#ffffff',
+                            animationShadow: '0 2px 4px rgba(0,0,0,0.2)'
+                        }
+                    },
+                    default: {
+                        titles: {
+                            streamBegins: "STREAM BEGINS IN",
+                            streamRunning: "STREAM TIME REMAINING",
+                            streamEnded: "STREAM TOTAL TIME",
+                            progressBar: "Fundraising Progress",
+                            heading: 'Stream',
+                            subheading: 'Subheading'
+                        },
+                        donations: {
+                            noDonations: "No donations yet!",
+                            defaultDonorName: "Anonymous",
+                            largestDonationFormat: "Largest Donation: ${amount} by {name}",
+                            donationFormat: "{name} donated ${amount}",
+                            supportMessage: "Support the Stream!",
+                            recentDonations: "Current Fundraising",
+                            customRecentMessage: "Top Row Override",
+                            customLargestMessage: "Middle Row Override"
+                        },
+                        colors: {
+                            progressColor: '#a60000',
+                            trackColor: 'rgba(34, 34, 34, 0.95)',
+                            goalColor: '#ffffff',
+                            milestoneColor: '#ffffff',
+                            progressBoxColorOne: '#2a2a2a',
+                            progressBoxColorTwo: '#1a1a1a',
+                            goalTitleColor: '#e3e3e3'
+                        },
+                        animation: {
+                            animationHighlight: '#a60000',
+                            animationBackground: 'linear-gradient(135deg, #111111, #1a1a1a)',
+                            animationBorder: '#a60000',
+                            animationText: '#ffffff',
+                            animationShadow: '0 2px 4px rgba(0,0,0,0.2)'
+                        }
+                    }
+                },
+
+                // Branding
+                branding: {
+                    logo: {
+                        extraLife: {
+                            src: "ExtraLifeLogo.png",
+                            alt: "Extra Life Logo",
+                            styles: {
+                                width: "100%",
+                                height: "100%",
+                                objectFit: "contain",
+                                padding: "0",
+                                background: "none"
+                            }
+                        },
+                        default: {
+                            src: "StreamLogo.png",
+                            alt: "Stream Logo",
+                            styles: {
+                                width: "100%",
+                                height: "100%",
+                                objectFit: "contain",
+                                padding: "0",
+                                background: "none"
+                            }
+                        }
+                    }
+                }
+            },
+
+            // Extra Life Specific Settings
+            extraLife: {
+                useExtraLife: false, // Set to true to use Extra Life mode
+                useExtraLifeColors: false,
+                extralifeDonorRotationInterval: 3,
+                dataPollInterval: 60,
+                participantId: 543224,
+                api: {
+                    baseUrl: "https://www.extra-life.org/api",
+                    endpoints: {
+                        participant: (id) => `/participants/${id}`,
+                        donations: (id) => `/participants/${id}/donations`
+                    }
+                }
+            },
+
+            // Stream Elements Specific Settings
+            streamElements: {
+                useStreamElements: false,
+                channelId: '',
+                jwtToken: '',
+                pollInterval: 60,
+                useLocalDonations: false,
+                localDonationsVariable: '',
+                streamElementsVariable: '',
+                subscriptionValues: {
+                    prime: 2.50,
+                    tier1: 2.50,
+                    tier2: 5.00,
+                    tier3: 12.50
+                },
+                bitsValue: 0.01
+            },
+
+            // Timing Configuration (all in seconds)
+            timing: {
+                transition: 0.5,
+                cycleDelay: 30,
+                animationDisplay: 5,
+                animationPreTiming: 10,
+                animationPostTiming: 10,
+                customDonorRotationInterval: 3,
+                dataPollInterval: 60
+            }
+        };
+
+        // Detect API or CustomVariable Use
+        window.goalTrackerState = {
+            useCustomJSON: CONFIG.mode.useCustomDonationData,
+            useExtraLife: CONFIG.extraLife.useExtraLife,
+            useStreamElements: CONFIG.streamElements.useStreamElements
+        };
+
+        /* Templates */
+        const TEMPLATES = {
+            animation: {
+                processTemplate: (template, variables) => {
+                    return template.replace(/\{\{(\w+)\}\}/g, (match, variable) => {
+                        return variables[variable] || match;
+                    });
+                },
+                baseStructure: (type) => {
+                    const templateConfig = CONFIG.content.templates[type];
+                    return `
+                <div class="message-content">
+                    <div class="animation-header">
+                        ${CONFIG.display.showHighlight
+                            ? `<span class="highlight">`
+                            : '<span>'}
+                            ${templateConfig.titles.heading}
+                        </span>
+                    </div>
+                    <div class="animation-subheader">
+                        ${templateConfig.titles.subheading}
+                    </div>
+                </div>
+            `;
+                },
+                getTemplate: () => {
+                    const type = CONFIG.extraLife.useExtraLife ? 'extraLife' : 'default';
+                    return TEMPLATES.animation.baseStructure(type);
+                }
+            }
+        }
+
+        /**
+         * Applies theme colors to the widget based on configuration
+         * Handles both default and Extra Life color schemes
+         * @function
+         * @description Sets CSS variables for colors and updates theme attribute
+         */
+        function applyThemeColors() {
+            const type = (CONFIG.extraLife.useExtraLife && CONFIG.extraLife.useExtraLifeColors) ? 'extraLife' : 'default';
+            const root = document.documentElement;
+
+            // Apply all properties directly
+            const themeProperties = {
+                ...CONFIG.content.templates[type].colors,
+                ...CONFIG.content.templates[type].animation
+            };
+
+            Object.entries(themeProperties).forEach(([key, value]) => {
+                root.style.setProperty(`--${key}`, value);
+            });
+
+            // Only set data-theme attribute if both Extra Life settings are enabled
+            if (CONFIG.extraLife.useExtraLife && CONFIG.extraLife.useExtraLifeColors) {
+                root.setAttribute('data-theme', 'extraLife');
+            } else {
+                root.removeAttribute('data-theme');
+            }
+        }
+
+        /* Helper Functions */
+        function toMS(seconds) {
+            return seconds * 1000;
+        }
+
+        function hasStreamStarted() {
+            const now = new Date();
+            const start = new Date(`${CONFIG.streamInfo.startDate}T${CONFIG.streamInfo.startTime}`);
+            return now >= start;
+        }
+
+        function hasStreamEnded() {
+            const now = new Date();
+            const end = new Date(`${CONFIG.streamInfo.endDate}T${CONFIG.streamInfo.endTime}`);
+            return now >= end;
+        }
+
+        function parseCustomVariable(variable) {
+            return parseFloat(variable) || 0;
+        }
+
+        function formatTimestamp(timestamp) {
+            const date = new Date(timestamp);
+            if (isNaN(date.getTime())) {
+                return '';  // Return empty string for invalid dates
+            }
+
+            // Format the time without leading zeros for hours
+            const timeStr = date.toLocaleTimeString('en-US', {
+                hour: 'numeric', // This removes leading zeros
+                minute: '2-digit',
+                hour12: true
+            });
+
+            // Format the date in a readable way
+            const dateStr = date.toLocaleDateString('en-US', {
+                month: 'short',
+                day: 'numeric'
+            });
+
+            return `on ${dateStr} at ${timeStr}`;
+        }
+
+        function ensureInitialization() {
+            const widget = document.getElementById('widget');
+            if (!widget) {
+                // If widget isn't found, retry after a short delay
+                setTimeout(ensureInitialization, 100);
+                return;
+            }
+
+            // Force opacity and visibility
+            widget.style.opacity = '1';
+            widget.style.visibility = 'visible';
+            document.body.style.backgroundColor = 'transparent';
+            document.documentElement.style.backgroundColor = 'transparent';
+
+            // Initialize the widget
+            initializeWidget();
+
+            // Force a refresh of the display
+            updateSectionVisibility();
+
+            // Add a class to indicate full initialization
+            widget.classList.add('initialized');
+
+            // Force a redraw
+            widget.style.transform = 'translateZ(0)';
+        }
+
+        // Initialize State
+        let State = {
+            donations: [],
+            total: 0,
+            donorIndex: 0,
+            largestDonation: {
+                amount: 0,
+                displayName: CONFIG.content.templates[
+                    CONFIG.extraLife.useExtraLife ? 'extraLife' : 'default'
+                ].donations.defaultDonorName
+            },
+            fundraisingGoal: CONFIG.mode.defaultDonationGoal
+        };
+
+        // Start initialization process
+        ensureInitialization();
+
+        // Start the polling and rotation
+        startPolling();
+
+        if (CONFIG.extraLife.useExtraLife || CONFIG.streamElements.useStreamElements || (CONFIG.mode.showInfoSection && CONFIG.mode.useCustomDonationData)) {
+            initializeRotation();
+        }
+
+        // Use the correct initial data source based on configuration
+        if (!CONFIG.extraLife.useExtraLife && !CONFIG.streamElements.useStreamElements) {
+            const currentDonations = CONFIG.mode.useCustomDonationData && CONFIG.mode.customVariables.recentDonations?.length > 0
+                ? CONFIG.mode.customVariables.recentDonations[0].overall_total.amount
+                : parseCustomVariable(CONFIG.mode.customVariables.current);
+
+            const donationGoal = parseCustomVariable(CONFIG.mode.customVariables.goal);
+
+            updateProgressBar(donationGoal, currentDonations);
+            State.total = currentDonations;
+            State.fundraisingGoal = donationGoal;
+
+            if (CONFIG.mode.useMilestonesAsGoals) {
+                updateMilestones(currentDonations);
+            }
+        }
+
+        applyLogoSettings();
+        applyThemeColors();
+
+        /* Function to get the appropriate logo configuration */
+        function getLogoConfig() {
+            const logoConfig = CONFIG.extraLife.useExtraLife
+                ? CONFIG.content.branding.logo.extraLife
+                : CONFIG.content.branding.logo.default;
+
+            // Ensure we have a valid configuration
+            if (!logoConfig || !logoConfig.styles) {
+                return {
+                    src: "",
+                    alt: "",
+                    styles: {
+                        width: "100%",
+                        height: "100%",
+                        objectFit: "contain",
+                        padding: "0",
+                        background: "none"
+                    }
+                };
+            }
+
+            return logoConfig;
+        }
+
+        /* Function to apply logo settings */
+        function applyLogoSettings() {
+            const logo = document.querySelector('.logo');
+            if (!logo) return; // Guard clause in case logo element doesn't exist
+
+            const logoConfig = getLogoConfig();
+
+            // Set the logo source and alt text
+            logo.src = logoConfig.src || "";
+            logo.alt = logoConfig.alt || "";
+
+            // Apply styles from the configuration
+            if (logoConfig.styles) {
+                Object.entries(logoConfig.styles).forEach(([key, value]) => {
+                    logo.style[key] = value;
+                });
+            }
+        }
+
+        /** 
+         * Handles initial setup and state management
+         * Sets up DOM elements
+         * Initializes display states
+         * Starts polling and rotation cycles
+        */
+        function initializeWidget() {
+            const widget = document.getElementById('widget');
+            const countdown = document.querySelector('.countdown');
+            const countdownContent = document.querySelector('.countdown-content');
+            const infoSection = document.querySelector('.info-section');
+            const logoContainer = document.querySelector('.countdown');
+
+            const existingLogo = logoContainer.querySelector('.logo');
+            if (existingLogo) {
+                existingLogo.remove();
+            }
+
+            // Insert the correct logo based on mode
+            if (CONFIG.extraLife.useExtraLife) {
+                logoContainer.insertAdjacentHTML('beforeend', `
+            <svg class="logo hidden extra-life-logo" viewBox="0 0 2048 800" width="1000" height="391">
+                <path
+                    d="M515 0l3 4 5 17 3 17 1-33 2 3 2 14 1 23 6-20h2l3 13 1 8v16l-2 10 1-1 8-19 5-15h1l-1 10-6 21v2l9-15h2v24l-3 13v2l12-19 5-9 1 3-12 25-4 7 16-14 1 4-3 16-4 9-3 5 1 1 7-7 8-7 5-5 4-2-4 6-12 13-8 8 17-7 3 1-7 16-7 8 6-2 15-8 2 1-11 8-17 9 24-3-2 4-6 8-8 7h2l18-5 4-1-3 3-14 6-14 4 2 1 20 1-5 6-10 6-7 3h17l9-1-1 2-14 3-10 1-2 1 16 3-4 4-11 5-9 3 23 3-3 2h-13l-11-1 15 5v2l-10 4-15 3 22 4 1 2-26-2 12 7-3 2-8 2-15 1 15 6-4 1-15-5-1 1 11 8v2l-6 2h-19l12 9-2 1-14-9 1 4 6 7v3l-5 1h-9l-10-4 8 13v3l-7-8-3-3 4 11v2h-5l7 11 2 5 3 3 8 16 6 15 5 21 2 19-1 18-3 14-6 12-4 5-8 5h-8l-10-5-20-18-7-8-13-11-5-2-5 6-10 5-4 1h-9l-11-4-5-5-11 1-23 6-19 7h-2l-1 7-5 8-8 7-5 2h-21l-4 10-7 29-3 12-4 10-6 7-10 2-9-2-10-6-10-9-9-11-9-16-6-14-5-17-4-25v-8l2 4 8 21 9 17 14 19 7 11-6-12-14-21-9-16-6-13-5-15v-14l-6 2-4-14-1 16h-2l-1-16-4 5-8 6-5 2-3-1v-14l-7 15-2-1 4-11-1-1-7 6-12 5h-2l3-9 2-8-7 9-7 8-2-1 9-12-4 2-11 5-9 2 2-5 6-9-5 4-12 9-5 2 4-5 11-9 1-2-11 5-14 3v-3l9-10-4 2-13 9-5 3-2-1 16-13 4-3-16 4H68l6-7 4-5-15 7-9 2 4-3 20-11-11 2H55l-6-2 5-5 11-7h-4l-24 5-4-1 23-7-16-4-7-3v-2l21-9H21v-1l26-3-14-5-13-9 1-2 20-3-24-6-10-4 2-1 21 4 9 1-11-6-9-8-7-9 1-2 16 3h4l-14-7-12-8-7-5 2-1 19 10 9 4h2l-8-7-7-8-8-14 1-3 13 7 1-1-10-8-11-11v-2l4 2 12 10 12 8-3-4-9-13-7-15-2-9 4 2 7 7 8 6-9-13-9-17-2-5 1-3 10 17 9 12-7-16-4-13-2-10 4 2 9 11 12 14 7 7 7 8-1-12 4 5 11 13 7 7 15 11 15 8-5-7 4 2 8 7 6 8 1 3v39l3 9 6 9 9 6 14 6 16 5-7-8-4-5 6 2 11 7 13 11 10 13 5 8v2h2l1-5 7-13 7-8 11-7 13-4 1 2-3 2 13-4 9-1h9l14 24 12 18 2 2-10-15-12-21-3-7 25-6 42-12 32-10 6-3h2l1 11v50l2-26v-12l-1-25 9-6 11-5 7-2h19l-21-1 2-2 7-2h18l10 3 11 6 3 2 1-17 3-16 6-16 6-11 2-1-4 18-1 2h2l2-5 11-12 7-11 3-9v-13l-4-10-7-11-9-12-4-11 2-13 4-9 1 2-1 7 11-21 6-20 3-23 2-1 3 11 5-24 4-29zm-99 279l1 2zm19 0l-1 7-3 3-2 1h-6l-4-2-3-7h-1l1 7 5 4 2 1 9-1 5-5v-7zm9 15l-1 7 4 6 9 3 7-3 3-5-1-7-2-1v7l-5 5h-7l-5-4-1-8zm-28 7l1 10-5 5-6 1-5-2-2-3-1-8-2 3 1 7 4 5 2 1h8l6-4 3-4-1-9zm-182 4l-1 2 3-1zm-3 2l-1 2 3-1zm-3 2l-1 2 3-1zm268 3l1 9 3 21v48l2 4 2-22v-29l-3-19-4-12zm-139 5l-5 2-2 3 3 3 13-2 2-3-2-3zm-139 2l1 2zm228 0l1 10-3 5-3 1h-7l-4-1-2-5-1-7-2 2 1 7 3 5 5 3h8l5-3 3-5v-8zm-19 1l1 2zm-102 6l-10 5-1 4 6 1 10-5v-4zm-71 3l2 9 2 4 10-3 5-2v-2l-8-5-3-1zm33 4l1 2zm94 0v6h1v-6zm-143 2l-6 7-4 11 5-1 9-3-1-9-2-5zm9 0l-1 3 4-2zm41 0l2 4-1-4zm2 4l1 2zm90 1l1 2zm-89 1l1 13-2 11-5 10-9 9-10 5-7 2h-13l-10-3-8-6-9-12 1 5 6 8 7 6 5 3 7 2h15l12-4 12-9 7-11 3-10v-13l-2-6zm-14 2l1 3zm-8 1l1 4h2l-1-4zm33 1l2 4 2 1-2-4zm105 3l-10 4-1 2 11-3h10l10 4 5 4 6 12 1 10 3 2-1-12-4-10-5-6-10-6-4-1zm-156 1l-3 3 2 4 4 1 3-3-1-5zm56 2l2 4v-3zm-30 1l-13 5 1 7 3 9 4-2 6-10 2-9zm-42 5v4h2v-4zm-7 2l1 2zm181 0l-7 3-5 6 1 2 5-4 5-2 12-1-3-3zm-163 4l-14 5 6 7 6 3 8 1-3-11-2-5zm-28 3l1 4zm40 2l-2 3h4v-3zm47 10l-9 2-9 6-6 9-2 6v12l4 9 1-2-3-9 1-11 4-8 5-6 8-4 14-2-3-2zm76 0l-25 5-16 6-7 3v2l5-1 24-8 22-5v-2zm50 1l1 2zm-1 2l-3 6-7 6-10 2-11-3 3 3 8 3 8-1 6-3 6-7 1-6zm13 3l1 3v-3zm-138 5l-8 4-4 6h3l5-4 3-1h13v-2l-7-3zm143 1l1 2zm54 4l1 3zm-174 13l1 3zm-1 3l1 3zm-1 3l-4 6-5 4-3 1h-11l-7-2 3 3 4 2h11l8-4 5-7zm-42 9l1 11h1v-9zm0 12l1 3zm-43 37l1 2zm1 3l1 2z"
+                    fill="#49c1e3" />
+                <path
+                    d="M1104 451h20l17 3 15 5 11 6 12 9 15 15 9 14 6 14 4 16 1 9v89l-4 10-7 6-11 4-8 1h-72l-20-2-17-5-17-9-10-8-14-14-9-14-5-11-4-13-2-12v-26l4-19 6-15 7-11 8-10 9-9 14-10 12-6 16-5zm5 53l-13 3-10 6-8 7-7 11-3 8-1 6v13l4 14 7 10 7 7 10 6 10 3 32 1h23l1-1v-51l-3-13-6-11-9-9-10-6-8-3-7-1zm647-53h19l18 3 14 5 12 6 13 10 10 10 4 8v14l-5 10-16 15-13 12-11 11-8 7-11 11-8 7-11 11-6 5v1l19 1 34 1 8 4 6 7 3 8v14l-5 10-5 5-5 3-12 2h-35l-20-2-15-4-16-8-9-6-10-9-7-7-9-13-6-12-5-16-2-13v-22l3-17 6-16 6-11 11-14 7-7 15-11 15-7 13-4zm6 53l-10 2-9 4-8 6-7 7-7 14-2 10v10l4-2 15-14 13-12 8-8 8-7 8-8v-1l-5-1zM399 451h18l18 3 12 4 17 9 10 8 6 5 7 10 2 8-1 10-5 9-16 15-8 8-8 7-11 11-8 7-12 12-8 7-12 12-1 2h21l32 1 8 4 6 7 3 7v16l-4 8-5 5-6 4-13 2h-34l-20-2-15-4-16-8-14-10-10-10-10-14-8-16-4-15-2-13v-17l3-19 6-16 7-13 8-10 7-8 16-12 16-8 14-4zm5 53l-10 2-12 6-10 9-7 11-3 10v15l4-2 11-11 8-7 11-11 8-7 10-10 3-2v-2zm128-53h9l9 4 8 6 10 11 27 36 4 5v2l5-5 10-14 13-18 11-14 9-8 8-4h15l10 5 6 5 4 8v10l-4 10-10 13-10 11-9 11-12 13-6 7 2 5 11 13 11 14 13 16 10 13 8 14 1 3v10l-4 8-9 7-7 3h-14l-10-5-7-6-9-11-13-16-11-14-10-13-6 5-11 14-12 14-11 14-11 12-8 5-3 1h-14l-10-5-6-5-4-7-1-9 4-11 10-14 13-16 11-14 9-11 8-10 1-4-10-11-9-11-12-13-9-11-7-10-3-7v-13l4-7 8-7z"
+                    fill="#fdfdfd" />
+                <path
+                    d="M1918 588h10l7 5 9 11 11 12 7 8 12 14 9 10 7 8 12 14 10 11 5 8v8l-4 6-9 9-11 9-12 11-11 9-12 11-11 9-13 12-11 9-5 4-2 1h-9l-6-4-13-14-9-11-11-12-7-8-12-14-11-12-9-11-9-10-3-6v-7l4-7 8-7 14-12 11-10 11-9 13-12 11-9 14-13 11-9z"
+                    fill="#1d5f82" />
+                <path
+                    d="M1593 372h35l10 5 5 6 3 7v17l-5 10-8 6-8 2-25 1-10 4-8 7-5 10-1 3-1 62h46l9 3 7 6 4 11v13l-4 10-7 7-8 3-46 1-1 64-3 9-7 8-9 4-9 1-10-2-9-6-5-8-1-4V443l4-16 6-14 8-11 8-9 13-10 15-7zm-857 34h12l8 3 7 5 5 9 1 4v26h60l8 2 6 4 6 7 3 10v8l-2 9-6 8-4 3-7 2-12 1h-52l1 66 3 9 9 10 8 4 3 1 13 1h18l13 2 6 4 6 7 3 10v8l-2 9-4 6-6 5-6 2-10 1h-25l-19-2-15-5-13-7-11-9-10-11-8-14-5-14-2-11V425l5-10 7-6z"
+                    fill="#fdfdfd" />
+                <path
+                    d="M2006 477h12l6 4 3 5 16 89 5 27v15l-6 6-18 4-45 8-4-2-10-11-7-8-12-14-10-11v-2l-10-5h-7l-10 6-13 12h-2l-15-85 1-9 5-6 9-3z"
+                    fill="#1c5e81" />
+                <path
+                    d="M1356 373h9l8 2 7 4 4 5 3 10v236l-3 9-7 8-9 4h-16l-10-5-6-8-2-5-1-232 1-10 4-8 8-7zm-394 79h15l9 3 8 7 4 7 1 5v10l-3 9-5 6-7 4-23 5-10 6-6 8-3 9-1 100-4 10-9 8-6 2h-16l-10-5-6-8-2-5V524l4-17 8-16 8-11 10-10 14-9 11-5 12-3zm486 0h12l8 2 6 4 4 5 2 5 1 6v155l-3 10-7 8-9 4h-17l-8-4-6-7-3-7V470l4-8 9-8z"
+                    fill="#fdfdfd" />
+                <path
+                    d="M367 154h15l11 3 7 6 2 5v8l-4 11-7 11-12 14-13 12-17 13-15 10-19 11-17 9-19 8-21 7-25 5h-16l-9-2-6-4-4-5-1-8 2-9 6-11 7-9 9-10 9-9 14-11 15-11 25-15 24-12 21-8 20-6zm0 8l-20 4-23 8-28 13-23 13-18 12-12 9-13 11-13 13-7 11-2 9 3 5 7 3h12l15-3 27-9 26-12 20-11 19-12 16-12 11-9 16-16 7-12 1-6-3-6-8-3z"
+                    fill="#49c1e3" />
+                <path
+                    d="M1494 676h8l1 1v9l-7 43 7 2 6 2 1-6 5-4 4-2h11l5 4 2 4v9l-6 7-7 3 2 4h7l7-4 10-9 11-9 10-6 10-4h7l1 23 3 10 2 4v5l-4 3h-5l-4-5-4-15-7 6-8 8-9 3-6-1-3-4-10 5-3 1h-8l-8-4-6-7-3-7 1-4h-11l-2 7-3 17-2 1h-8l-1-5 2-17 1-3-18 1-3 12-4 17-1 1h-9v-7l3-17v-5l-10-2-1-4 2-4 2-1h9l4-32 3-16 3-6h9l1 2-6 38-2 14 18-2 3-16 5-32zm27 54l-3 5v5l4 1 4-3v-6l-2-2zm52 2l-8 6-7 8-1 5 5-3 10-10 2-3zm-125-363h12l11 4 10 9 5 10 1 5v9l-3 10-6 8-7 6-10 4h-14l-10-4-8-7-6-9-2-9 1-13 5-10 7-7 9-5zm-279 317h12l5 3 4 7 1 4v7l-5 5-5-1-5-13-7 1-7 8-5 12-1 5v21l4 10 5 5 6-1 4-3h2l2-4 7-11 6-13-15 3-5-1-2-3 1-4 4-3 13-3h17l-1 9-5 12-10 17-6 7-8 6-6 2h-10l-8-5-5-8-4-15v-12l3-14 5-12 7-10 7-6zm152 35h11l5 5 2 5-1 8-4 5-8 4h-2l3 4h8l9-6 7-7 4-8 7-5 10-3h6l4 3-1 5-5 2-11 2v2l11 3 12 4 4 4-1 8-5 4-8 3-6 1h-10l-8-2-2-2 1-7 2-2 7 1 3 1h11v-2l-12-3-9-2-7 8-8 6-8 3h-8l-8-4-7-9-1-2 1-14 3-8 6-4zm2 9l-4 5 1 6 5-1 3-4-1-5zm-358-44h8l1 4 10 2 16 7 7 6 2 5-2 10-4 6-9 8-16 8-7 3h-3v18l-3 7-2 2-5-1-1-2-1-19-4-3v-6l3-1 1-20 3-19-5-1-2-4 4-5 8-4zm5 15l-3 19-1 15 9-2 14-7 7-8 1-6-5-5-14-5zm140 10h8l-1 13-7 47-3 14-6 8-5 4-5 2h-9l-6-3-7-7-2-4 1-4 1-1 7 1 10 6 5 1 4-4 4-11 3-19v-11l-9 10-6 4-3 1h-8l-2-3v-11l6-18 4-6 4-2 5 2-4 12-4 10v4l7-6 12-18 4-9zm550-20h6l2 1-3 12-3 9 19-9 15-9 6 1 2 1-1 5-9 6-34 17v4l11 10 17 12 6 2 8 1 2 4-5 3h-12l-10-4-18-13-2-1-1 19-4 4h-6v-33l-5-4-1-6 6-4 5-1 1-8 5-15zm108 6l5 1 1 1v9l-4 21v8l3 13 2 4v5l-4 4-6-1-3-4-1-6-10 7-11 4h-11l-2-2v-8l6-8 10-8 14-7 2-12 3-17zm-17 45l-6 4-6 6v2l5-1 6-5 3-4v-2zm-459-16l5 1 3 6 4 23-1 5-4 2-5-3-2-4-2-11-10 15-3 3-6-1-2-4v-14l-8 14-6 5-5-3 1-7 3-13 2-4 10-5 5-4 5 1 4 4 1 5 7-9zm-56-6h6l2 27 5 14-5 4-6-1-4-7-3-12-5 5-10 9-8 3-7-1-3-4 1-7 5-9 11-11 10-6zm-9 12l-9 7-6 7-1 5 4-2 5-4 9-11zm-168-12h6l1 1 1 24 5 14-1 4-3 2h-5l-4-5-5-15-13 13-6 3-7 1-5-3-1-1v-7l4-8 11-12 14-8zm-9 12l-11 9-4 6 1 4 8-7 8-9v-3zm748-9h7l4 3-1 5-10 3-6 2 11 4 12 4 4 5-1 6-5 5-8 3-6 1h-10l-9-2-1-1v-6l3-4 6 1 4 1h11v-2l-12-3-10-4-2-2v-7l5-6 10-5zm-775-46h5l2 3-2 14-7 32-2 18-1 15-2 4-8 1-1-1v-14l3-27 6-25 2-8 1-7zm590 0l7 1v11l-8 36-2 17-1 16-2 5-8 1-1-1v-16l3-25 6-25 2-13 3-6zm299-159h7l6 4 3 5-1 8-4 5-4 2h-7l-6-4-2-3v-10l4-5zm98 65l7 1 6 5 1 3v7l-4 6-3 2h-9l-6-4-2-4v-7l4-6zm-132-134h5l4 9 3 9v3h2l1-6 5-14 1-1h5l1 1v27l-5-1v-16l-6 16-5 1-4-10-2-9h-2l1 4v14l-4 1-1-1v-16zm39 172l10 1 5 6v9l-3 5-7 3-7-1-5-4-2-4v-6l4-6zm43-70h8l6 4 2 5-1 8-4 5-2 1h-10l-6-5-1-3v-7l4-6zm-49 180h10l5 4 2 4-1 9-5 5-9 1-6-3-3-5v-7l4-6zm-192-12h7v10l-5 28-2 5-5 3-4-2-1-1 1-9 8-33zm252-37l9 1 5 5 1 7-3 7-7 4-7-1-6-5-1-9 3-6zm-113-12h9l5 3 3 7-2 8-5 4-9 1-5-3-3-4v-9l3-5zm85-18h9l6 5 1 9-3 6-5 3h-7l-6-4-3-5 1-8 4-5zm-55 48l9 2 4 6v7l-4 6-3 2h-9l-5-3-3-6 1-8 6-5zm-36-251h23v4l-9 1-1 23h-4v-24h-9zm-24 302l6 2v5l-6 5h-6l-1-7 4-4zm-430 1h8l2 3-3 5-4 3h-5l-2-2v-5zm324-49h8l2 4-4 4h-9l-1-4z"
+                    fill="#fdfdfd" />
+                <path d="M154 291l3 1h-3zM52 351l2 1z" fill="#49c1e3" />
+            </svg>
+        `);
+            } else {
+                logoContainer.insertAdjacentHTML('beforeend', `
+            <img src="" class="logo hidden" alt="">
+        `);
+            }
+
+            // Initialize hidden state
+            if (CONFIG.display.countdown.showCountdown && CONFIG.display.countdown.countdownCycle) {
+                countdown.classList.add('roll-hidden');
+                countdownContent.classList.remove('visible');
+                countdownContent.style.display = 'none';
+            }
+
+            // Initialize info section state
+            if (CONFIG.mode.showInfoSection && !CONFIG.mode.infoSectionCycle) {
+                infoSection.classList.remove('hidden');
+            } else {
+                infoSection.classList.add('hidden');
+            }
+
+            // Apply styles and settings
+            applyThemeColors();
+            applyProgressBarSettings();
+            updateTextContent();
+            handleCountdownPosition();
+
+            if (CONFIG.display.countdown.showCountdown) {
+                updateCountdown();
+            }
+
+            // Initialize remaining components
+            if (CONFIG.extraLife.useExtraLife) {
+                fetchExtraLifeDonationData();
+                fetchExtraLifeDonations();
+            } else if (CONFIG.streamElements.useStreamElements) {
+                fetchStreamElementsData();
+            } else if (CONFIG.mode.useCustomDonationData) {
+                updateCustomDonations();
+            }
+
+            if (CONFIG.mode.showDonationAnimation) {
+                const donationAnimation = document.getElementById('donationAnimation');
+                donationAnimation.innerHTML = TEMPLATES.animation.getTemplate();
+                donationAnimation.style.display = 'none';
+            }
+
+            if (CONFIG.mode.showLogoAnimation) {
+                const logo = document.querySelector('.logo');
+                logo.classList.add('hidden');
+            }
+
+            // Delay showing the widget until everything is ready
+            setTimeout(() => {
+                widget.classList.add('initialized');
+                toggleDisplay();
+            }, 100);
+        }
+
+        /* Update Text Content */
+        function updateTextContent() {
+            const modeType = CONFIG.extraLife.useExtraLife ? 'extraLife' : 'default';
+            const textConfig = CONFIG.content.templates[modeType];
+
+            // Set progress title
+            const progressTitle = document.querySelector('.progress-title');
+            progressTitle.innerText = `${textConfig.titles.progressBar}`;
+
+            // Get initial amount from correct data source
+            const initialAmount = CONFIG.mode.useCustomDonationData
+                ? (CONFIG.mode.customVariables.recentDonations[0]?.overall_total?.amount || 0)
+                : State.total;
+
+            // Set initial texts
+            document.getElementById('donorInfo').innerText = textConfig.donations.recentDonations;
+            document.getElementById('largestDonation').innerText =
+                textConfig.donations.largestDonationFormat
+                    .replace('{amount}', initialAmount.toFixed(2))
+                    .replace('{name}', textConfig.donations.defaultDonorName);
+            document.getElementById('additionalInfo').innerText = textConfig.donations.supportMessage;
+
+            if (CONFIG.mode.useCustomDonationData && !CONFIG.mode.customVariables.recentDonations[0]?.donations?.length) {
+                const currentAmount = parseFloat(CONFIG.mode.customVariables.current) || 0;
+                if (currentAmount > 0) {
+                    document.getElementById('largestDonation').innerText =
+                        textConfig.donations.largestDonationFormat
+                            .replace('{amount}', currentAmount.toFixed(2))
+                            .replace('{name}', textConfig.donations.defaultDonorName);
+                }
+            }
+
+            // Set initial donation data
+            updateLargestDonationDisplay();
+            updateRecentDonationDisplay();
+        }
+
+        window.addEventListener('goalTrackerUpdate', (event) => {
+            // Check if updates should be blocked
+            if (window.goalTrackerState.useExtraLife ||
+                window.goalTrackerState.useStreamElements ||
+                (window.goalTrackerState.useCustomJSON &&
+                    CONFIG.mode.customVariables.jsonVariableName)) {
+                console.log('Update blocked: Tracker using ExtraLife/StreamElements/CustomJSON');
+                return;
+            }
+
+            const updateData = event.detail;
+
+            // Update configurations
+            if (updateData.current) CONFIG.mode.customVariables.current = updateData.current;
+            if (updateData.goal) CONFIG.mode.customVariables.goal = updateData.goal;
+            if (updateData.recentDonations) CONFIG.mode.customVariables.recentDonations = updateData.recentDonations;
+
+            // Update the display
+            const currentDonations = parseFloat(updateData.current) || 0;
+            const donationGoal = parseFloat(updateData.goal) || CONFIG.mode.defaultDonationGoal;
+
+            updateProgressBar(donationGoal, currentDonations);
+            updateCustomDonations();
+
+        });
+
+        /* Apply Progress Bar Settings */
+        function applyProgressBarSettings() {
+            // Handle progress title visibility
+            const progressTitle = document.querySelector('.progress-title');
+            if (!CONFIG.display.progressBar.showTitle) {
+                progressTitle.classList.add('hidden');
+            } else {
+                progressTitle.classList.remove('hidden');
+            }
+
+            // Handle container and widget background visibility
+            const progressBackground = document.getElementById('progressBackground');
+            const widget = document.getElementById('widget');
+
+            if (progressBackground.style.display === 'none') {
+                progressBackground.style.display = 'block';
+                widget.classList.add('align-to-track'); // Ensure the alignment class is added
+            } else {
+                progressBackground.style.display = 'none';
+                widget.classList.remove('align-to-track'); // Ensure the alignment class is removed
+
+            }
+
+        }
+
+        /* Handle Countdown Position */
+        function handleCountdownPosition() {
+            if (CONFIG.display.countdown.countdownPosition === 'below') {
+                document.getElementById('widget').classList.add('countdown-below');
+                const widget = document.getElementById('widget');
+                const countdown = document.querySelector('.countdown');
+                const progressSection = document.querySelector('.progress-section');
+                const infoSection = document.querySelector('.info-section');
+
+                // Remove elements
+                countdown.remove();
+                progressSection.remove();
+                infoSection.remove();
+
+                // Re-add in correct order
+                widget.appendChild(progressSection);
+                widget.appendChild(countdown);
+                widget.appendChild(infoSection);
+            }
+        }
+
+        /**
+         * Controls visibility of widget sections
+         * @function
+         * @description Manages display states based on stream timing and configuration
+         * Handles pre-stream, during-stream, and post-stream states
+         */
+        function updateSectionVisibility() {
+            const now = new Date();
+            const end = new Date(`${CONFIG.streamInfo.endDate} ${CONFIG.streamInfo.endTime}`);
+            const streamHasEnded = now > end;
+
+            // Handle countdown visibility
+            if (CONFIG.display.countdown.showCountdown) {
+                const countdown = document.querySelector('.countdown');
+                countdown.style.display = 'block';
+
+                if (!CONFIG.display.countdown.countdownCycle) {
+                    countdown.classList.remove('roll-hidden');
+                }
+            }
+
+            if (CONFIG.display.progressBar.hideBeforeStreamStartTime && !hasStreamStarted()) {
+                document.querySelector('.progress-section').style.display = 'none';
+                document.querySelector('.info-section').style.display = 'none';
+            } else if (streamHasEnded && CONFIG.display.progressBar.hideAfterStreamEndTime) {
+                document.querySelector('.progress-section').style.display = 'none';
+                document.querySelector('.info-section').style.display = 'block';
+            } else {
+                document.querySelector('.progress-section').style.display = 'block';
+                document.querySelector('.info-section').style.display = 'block';
+            }
+        }
+
+        /** 
+         * Controls display cycling behavior
+         * Manages countdown/logo transitions
+         * Handles info section visibility
+         * Controls animation timing
+        */
+        function toggleDisplay() {
+            const countdownContent = document.querySelector('.countdown-content');
+            const logo = document.querySelector('.logo');
+            const infoSection = document.querySelector('.info-section');
+            const animationDiv = document.getElementById('donationAnimation');
+            const countdown = document.querySelector('.countdown');
+            let cycleCount = 0;
+
+            function initializeState() {
+                // Start with logo hidden
+                logo.style.display = 'none';
+                logo.classList.add('hidden');
+
+                // Set countdown state
+                if (CONFIG.display.countdown.showCountdown) {
+                    countdown.style.display = 'block';
+                    if (CONFIG.display.countdown.countdownCycle) {
+                        countdown.classList.add('roll-hidden');
+                        countdownContent.classList.remove('visible');
+                        countdownContent.style.display = 'none';
+                    } else {
+                        countdown.classList.remove('roll-hidden');
+                        countdownContent.classList.add('visible');
+                        countdownContent.style.display = 'block';
+                    }
+                } else {
+                    countdown.style.display = 'none';
+                    countdownContent.style.display = 'none';
+                }
+
+                // Set info section state
+                if (!CONFIG.mode.showInfoSection) {
+                    infoSection.style.display = 'none';
+                } else if (CONFIG.mode.infoSectionCycle) {
+                    infoSection.classList.add('hidden');
+                } else {
+                    // When not cycling, start visible
+                    infoSection.classList.remove('hidden');
+                }
+
+                // Reset animation div
+                animationDiv.style.display = 'none';
+            }
+
+            function handleCountdownCycle() {
+                if (CONFIG.display.countdown.showCountdown) {
+                    if (CONFIG.display.countdown.countdownCycle) {
+                        countdown.classList.remove('roll-hidden');
+                        countdownContent.style.display = 'block';
+                        countdownContent.classList.add('visible');
+                    }
+
+                    setTimeout(() => {
+                        if (CONFIG.mode.showLogoAnimation) {
+                            countdownContent.classList.remove('visible');
+                            countdownContent.style.display = 'none';
+                            logo.classList.remove('hidden');
+                            logo.style.display = 'block';
+
+                            setTimeout(() => {
+                                logo.classList.add('hidden');
+                                logo.style.display = 'none';
+                                countdownContent.style.display = 'block';
+                                countdownContent.classList.add('visible');
+
+                                setTimeout(() => {
+                                    if (CONFIG.display.countdown.countdownCycle) {
+                                        countdown.classList.add('roll-hidden');
+                                    }
+                                    setTimeout(startNextCycle, toMS(CONFIG.timing.cycleDelay));
+                                }, toMS(CONFIG.timing.animationPostTiming));
+                            }, toMS(CONFIG.timing.animationDisplay));
+                        } else {
+                            setTimeout(() => {
+                                if (CONFIG.display.countdown.countdownCycle) {
+                                    countdown.classList.add('roll-hidden');
+                                }
+                                setTimeout(startNextCycle, toMS(CONFIG.timing.cycleDelay));
+                            }, toMS(CONFIG.timing.animationDisplay + CONFIG.timing.animationPostTiming));
+                        }
+                    }, toMS(CONFIG.timing.animationPreTiming));
+                }
+            }
+
+            function handleInfoCycle() {
+                if (!CONFIG.mode.showInfoSection) {
+                    handleCountdownCycle();
+                    return;
+                }
+
+                infoSection.classList.remove('hidden');
+
+                setTimeout(() => {
+                    if (CONFIG.mode.showDonationAnimation) {
+                        animationDiv.innerHTML = TEMPLATES.animation.getTemplate();
+                        animationDiv.style.display = 'flex';
+                        requestAnimationFrame(() => {
+                            animationDiv.classList.add('show');
+                        });
+
+                        setTimeout(() => {
+                            animationDiv.classList.remove('show');
+                            setTimeout(() => {
+                                animationDiv.style.display = 'none';
+                                if (CONFIG.mode.infoSectionCycle) {
+                                    infoSection.classList.add('hidden');
+                                }
+                                setTimeout(startNextCycle, toMS(CONFIG.timing.cycleDelay));
+                            }, toMS(CONFIG.timing.transition + CONFIG.timing.animationPostTiming));
+                        }, toMS(CONFIG.timing.animationDisplay));
+                    } else {
+                        setTimeout(() => {
+                            if (CONFIG.mode.infoSectionCycle) {
+                                infoSection.classList.add('hidden');
+                            }
+                            setTimeout(startNextCycle, toMS(CONFIG.timing.cycleDelay));
+                        }, toMS(CONFIG.timing.animationDisplay + CONFIG.timing.animationPostTiming));
+                    }
+                }, toMS(CONFIG.timing.animationPreTiming));
+            }
+
+            function startNextCycle() {
+                if (!CONFIG.display.countdown.showCountdown && !CONFIG.mode.showInfoSection) {
+                    return;
+                }
+
+                if (!CONFIG.display.countdown.showCountdown && CONFIG.mode.showInfoSection) {
+                    handleInfoCycle();
+                    return;
+                }
+
+                if (!CONFIG.display.countdown.countdownCycle) {
+                    if (!CONFIG.mode.showInfoSection) {
+                        handleCountdownCycle();
+                    } else {
+                        handleCountdownCycle();
+                        handleInfoCycle();
+                    }
+                    return;
+                }
+
+                cycleCount++;
+                if (cycleCount % 2 === 1) {
+                    handleCountdownCycle();
+                } else if (CONFIG.mode.showInfoSection) {
+                    handleInfoCycle();
+                } else {
+                    handleCountdownCycle();
+                }
+            }
+
+            // Start the cycle
+            initializeState();
+            setTimeout(startNextCycle, toMS(CONFIG.timing.cycleDelay));
+        }
+
+        /**
+         * Manages countdown timer display and updates
+         * @function
+         * @description Handles stream start/end countdown formatting and display
+         * Updates countdown text based on current stream state
+         */
+        function updateCountdown() {
+            function createDateWithTimezone(dateStr, timeStr) {
+                // Directly use the YYYY-MM-DD and HH:mm formats
+                const dateTimeStr = `${dateStr}T${timeStr}`;
+                return new Date(dateTimeStr);
+            }
+
+            function formatTime(elapsed) {
+                const days = Math.floor(elapsed / (1000 * 60 * 60 * 24));
+                const hours = Math.floor((elapsed % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+                const minutes = Math.floor((elapsed % (1000 * 60 * 60)) / (1000 * 60));
+                const seconds = Math.floor((elapsed % (1000 * 60)) / 1000);
+
+                if (days > 0) {
+                    return `${String(days).padStart(2, '0')}d ${String(hours).padStart(2, '0')}h ${String(minutes).padStart(2, '0')}m ${String(seconds).padStart(2, '0')}s`;
+                }
+                return `${String(hours).padStart(2, '0')}h ${String(minutes).padStart(2, '0')}m ${String(seconds).padStart(2, '0')}s`;
+            }
+
+            function updateTimer() {
+                const now = new Date();
+                const start = createDateWithTimezone(CONFIG.streamInfo.startDate, CONFIG.streamInfo.startTime);
+                const end = createDateWithTimezone(CONFIG.streamInfo.endDate, CONFIG.streamInfo.endTime);
+                const textConfig = CONFIG.content.templates[CONFIG.extraLife.useExtraLife ? 'extraLife' : 'default'];
+                let timeString, title;
+
+                if (now < start) {
+                    const distance = start - now;
+                    timeString = formatTime(distance);
+                    title = textConfig.titles.streamBegins;
+                } else if (now < end) {
+                    const distance = end - now;
+                    timeString = formatTime(distance);
+                    title = textConfig.titles.streamRunning;
+
+                    if (CONFIG.display.progressBar.hideBeforeStreamStartTime) {
+                        updateSectionVisibility();
+                    }
+                } else {
+                    const elapsed = now - end;
+                    timeString = formatTime(elapsed);
+                    title = textConfig.titles.streamEnded;
+                }
+
+                document.getElementById('countdownTitle').innerText = title;
+                adjustFontSize(title);
+                document.getElementById('timeRemaining').innerText = timeString;
+            }
+
+            updateTimer();
+            setInterval(updateTimer, 1000);
+        }
+
+        function adjustFontSize(title) {
+            const titleLength = title.length;
+            let maxFontRange = 24;
+            let minFontRange = 12;
+            let maxWidgetWidth = 300;
+            let newSize = maxFontRange;
+            if (titleLength > 20) {
+                newSize = Math.max(minFontRange, maxFontRange - (titleLength - 20));
+            }
+            const containerWidth = document.querySelector('.countdown-title').clientWidth;
+            if (containerWidth < maxWidgetWidth) {
+                newSize = Math.min(newSize, Math.floor(maxWidgetWidth / titleLength) * 2);
+            }
+            document.querySelector('.countdown-title').style.fontSize = `${newSize}px`;
+        }
+
+        /**
+         * Manages periodic data updates
+         * Fetches latest donation data
+         * Updates progress and displays
+         * Handles stream state changes
+        */
+        function startPolling() {
+            const interval = CONFIG.extraLife.useExtraLife ?
+                CONFIG.extraLife.dataPollInterval :
+                CONFIG.streamElements.useStreamElements ?
+                    CONFIG.streamElements.pollInterval :
+                    CONFIG.timing.dataPollInterval;
+
+            setInterval(() => {
+                if (!CONFIG.display.progressBar.hideAfterStreamEndTime || !hasStreamEnded()) {
+                    if (CONFIG.display.progressBar.hideBeforeStreamStartTime && !hasStreamStarted()) return;
+
+                    if (CONFIG.extraLife.useExtraLife) {
+
+                        fetchExtraLifeDonationData();
+                        fetchExtraLifeDonations();
+                    } else if (CONFIG.streamElements.useStreamElements) {
+
+                        fetchStreamElementsData();
+                    } else {
+
+                        let currentDonations = 0;
+                        let donationGoal = State.fundraisingGoal || CONFIG.mode.defaultDonationGoal;
+
+                        const processData = () => {
+                            if (CONFIG.mode.useMilestonesAsGoals) {
+                                const nextMilestone = findNextMilestoneGoal(currentDonations);
+                                donationGoal = nextMilestone?.amount ||
+                                    [...CONFIG.content.milestones].reverse().find(m => m.amount > 0)?.amount ||
+                                    State.fundraisingGoal;
+                            }
+
+                            if (currentDonations !== State.total) {
+                                updateProgressBar(donationGoal, currentDonations);
+                                State.total = currentDonations;
+                            }
+
+                            if (CONFIG.display.progressBar.hideBeforeStreamStartTime || CONFIG.display.progressBar.hideAfterStreamEndTime) {
+                                updateSectionVisibility();
+                            }
+                        };
+
+                        // Try to get both values from individual variables first
+                        Promise.all([
+                            fetch(`http://${window.location.hostname}:7472/api/v1/custom-variables/${CONFIG.mode.customVariables.currentVariableName}`),
+                            fetch(`http://${window.location.hostname}:7472/api/v1/custom-variables/${CONFIG.mode.customVariables.goalVariableName}`)
+                        ])
+                            .then(responses => Promise.all(responses.map(r => r.json())))
+                            .then(([current, goal]) => {
+                                currentDonations = parseFloat(current?.value || current || 0);
+
+                                // Only update goal if we have a valid goal value and aren't using milestones
+                                if (!CONFIG.mode.useMilestonesAsGoals && goal?.value) {
+                                    const newGoal = parseFloat(goal.value);
+                                    if (newGoal > 0) {
+                                        State.fundraisingGoal = newGoal;
+                                        donationGoal = newGoal;
+                                    }
+                                }
+
+                                // If JSON variable is configured, try to get that data
+                                if (CONFIG.mode.customVariables.jsonVariableName) {
+                                    return fetch(`http://${window.location.hostname}:7472/api/v1/custom-variables/${CONFIG.mode.customVariables.jsonVariableName}`)
+                                        .then(response => response.json())
+                                        .then(jsonData => {
+                                            const donationData = Array.isArray(jsonData) ? jsonData[0] : jsonData;
+
+                                            if (donationData?.overall_total?.amount != null) {
+                                                currentDonations = donationData.overall_total.amount;
+                                                CONFIG.mode.customVariables.recentDonations = [donationData];
+                                                // Force a refresh of all donation displays
+                                                updateCustomDonations();
+                                                updateLargestDonationDisplay();
+                                            }
+                                        });
+                                }
+                            })
+                            .finally(() => {
+                                processData();
+                            })
+                            .catch(err => console.error('Fetch error:', err));
+                    }
+                }
+            }, toMS(interval));
+        }
+
+        /**
+         * Fetches and processes donation data from StreamElements API
+         * @function 
+         * @description Retrieves current session data, merges with previous data,
+         * handles local donations if enabled, and updates displays
+         * @throws {Error} When API requests fail or data is invalid
+         */
+        function fetchStreamElementsData() {
+            if (CONFIG.display.progressBar.hideBeforeStreamStartTime && !hasStreamStarted()) return;
+
+            const now = new Date();
+            const currentMonth = now.getMonth();
+            const currentYear = now.getFullYear();
+
+            // Get previous SE data if available
+            fetch(`http://localhost:7472/api/v1/custom-variables/${CONFIG.streamElements.streamElementsVariable}`)
+                .then(response => response.json())
+                .then(prevData => {
+                    // Fetch current StreamElements data
+                    return fetch(`https://api.streamelements.com/kappa/v2/sessions/${CONFIG.streamElements.channelId}`, {
+                        headers: {
+                            'Accept': 'application/json',
+                            'Authorization': `Bearer ${CONFIG.streamElements.jwtToken}`
+                        }
+                    }).then(response => response.json())
+                        .then(seData => ({ prevData: prevData?.v, seData }));
+                })
+                .then(({ prevData, seData }) => {
+                    const processedData = processStreamElementsData(seData, prevData, currentMonth, currentYear);
+
+                    // Store the updated SE data
+                    fetch(`http://localhost:7472/api/v1/custom-variables/${CONFIG.streamElements.streamElementsVariable}`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ ttl: 0, data: processedData })
+                    });
+
+                    // If local donations enabled, merge with local data
+                    if (CONFIG.streamElements.useLocalDonations) {
+                        if (!CONFIG.streamElements.localDonationsVariable) {
+                            return processedData; // Continue with just StreamElements data
+                        }
+
+                        return fetch(`http://localhost:7472/api/v1/custom-variables/${CONFIG.streamElements.localDonationsVariable}`)
+                            .then(response => {
+                                if (!response.ok) {
+                                    return processedData; // Use StreamElements data if local fetch fails
+                                }
+                                return response.json();
+                            })
+                            .then(localData => {
+                                return mergeWithLocalDonations(processedData, localData);
+                            })
+                            .catch(() => {
+                                return processedData; // Fallback to StreamElements data on any error
+                            });
+                    }
+
+                    return processedData;
+                })
+                .then(finalResult => {
+                    // Update the State and displays
+                    const total = finalResult.overall_total.amount;
+                    if (total !== State.total) {
+                        State.total = total;
+                        let donationGoal = State.fundraisingGoal || CONFIG.mode.defaultDonationGoal;
+
+                        if (CONFIG.mode.useMilestonesAsGoals) {
+                            const nextMilestone = findNextMilestoneGoal(total);
+                            donationGoal = nextMilestone?.amount ||
+                                [...CONFIG.content.milestones].reverse().find(m => m.amount > 0)?.amount ||
+                                donationGoal;
+                        }
+
+                        updateProgressBar(donationGoal, total);
+                    }
+
+                    // Always update State.donations with the final merged data
+                    if (finalResult.donations && finalResult.donations.length > 0) {
+                        State.donations = finalResult.donations;
+                        updateRecentDonationDisplay(finalResult.donations[0]);
+                        updateLargestDonationDisplay();
+                    }
+                })
+                .catch(error => {
+                    console.error('StreamElements fetch error:', error);
+                });
+        }
+
+
+        /**
+         * Processes StreamElements API data
+         * Combines subscriber/bits/tips data
+         * Calculates totals and formats display data
+         * Handles historical data comparison
+        */
+        function processStreamElementsData(seData, previousData, currentMonth, currentYear) {
+            let cheerTotal = 0;
+            let subscriberTotal = 0;
+            let tipTotal = 0;
+
+            const seResult = {
+                donations: previousData?.donations.filter(donor =>
+                    donor.individual_donations.some(d => isCurrentMonth(d.timestamp))) || [],
+                overall_total: { amount: 0, donation_count: 0 }
+            };
+
+            function isCurrentMonth(dateStr) {
+                const date = new Date(dateStr);
+                return date.getMonth() === currentMonth && date.getFullYear() === currentYear;
+            }
+
+            function addDonation(name, amount, timestamp) {
+                let donor = seResult.donations.find(d => d.name.toLowerCase() === name.toLowerCase());
+
+                if (!donor) {
+                    donor = {
+                        name,
+                        individual_donations: [],
+                        total_amount: 0,
+                        total_donations: 0
+                    };
+                    seResult.donations.push(donor);
+                }
+
+                const duplicate = donor.individual_donations.some(d =>
+                    d.amount === amount && d.timestamp === timestamp
+                );
+
+                if (!duplicate) {
+                    // Convert amount to number before adding
+                    const numericAmount = Number(amount);
+                    donor.individual_donations.push({ amount: numericAmount, timestamp });
+                    donor.total_amount = Number((Number(donor.total_amount) + numericAmount).toFixed(2));
+                    donor.total_donations++;
+                    seResult.overall_total.amount = Number((Number(seResult.overall_total.amount) + numericAmount).toFixed(2));
+                    seResult.overall_total.donation_count++;
+                }
+            }
+
+            // Process subscribers, cheers, and tips
+            seData.data['subscriber-recent']?.forEach(sub => {
+                if (isCurrentMonth(sub.createdAt)) {
+                    const subValue =
+                        sub.tier === '2000' ? CONFIG.streamElements.subscriptionValues.tier2 :
+                            sub.tier === '3000' ? CONFIG.streamElements.subscriptionValues.tier3 :
+                                sub.tier === 'prime' ? CONFIG.streamElements.subscriptionValues.prime :
+                                    CONFIG.streamElements.subscriptionValues.tier1;
+                    subscriberTotal += subValue;
+
+                    // Check if this sub matches the latest gifted sub
+                    const latestGifted = seData.data['subscriber-gifted-latest'];
+                    const isGifted = latestGifted &&
+                        latestGifted.name === sub.name &&
+                        latestGifted.tier === sub.tier;
+
+                    // Use the gifter's name if it's a gifted sub
+                    const donorName = isGifted ? latestGifted.sender : sub.name;
+                    addDonation(donorName, subValue, sub.createdAt);
+                }
+            });
+
+            seData.data['cheer-recent']?.forEach(cheer => {
+                if (isCurrentMonth(cheer.createdAt)) {
+                    const cheerValue = Number((cheer.amount * CONFIG.streamElements.bitsValue).toFixed(2));
+                    cheerTotal += cheerValue;
+                    addDonation(cheer.name, cheerValue, cheer.createdAt);
+                }
+            });
+
+            seData.data['tip-recent']?.forEach(tip => {
+                if (isCurrentMonth(tip.createdAt)) {
+                    const tipValue = Number((typeof tip.amount === 'string' ? parseFloat(tip.amount) : tip.amount).toFixed(2));
+                    tipTotal += tipValue;
+                    addDonation(tip.name, tipValue, tip.createdAt);
+                }
+            });
+
+            // Compare with monthly summaries
+            const cheerMonthSummary = seData.data['cheer-month']?.amount * 0.01 || 0;
+            const subscriberMonthSummary = seData.data['subscriber-month']?.count * 2.50 || 0;
+            const tipMonthSummary = seData.data['tip-month']?.amount || 0;
+
+            if (cheerMonthSummary > cheerTotal) {
+                seResult.overall_total.amount += Number((cheerMonthSummary - cheerTotal).toFixed(2));
+            }
+            if (subscriberMonthSummary > subscriberTotal) {
+                seResult.overall_total.amount += Number((subscriberMonthSummary - subscriberTotal).toFixed(2));
+            }
+            if (tipMonthSummary > tipTotal) {
+                seResult.overall_total.amount += Number((tipMonthSummary - tipTotal).toFixed(2));
+            }
+
+            // Sort donations
+            seResult.donations.forEach(donor => {
+                donor.individual_donations.sort((a, b) =>
+                    new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+                );
+            });
+            seResult.donations.sort((a, b) => b.total_amount - a.total_amount);
+
+            return seResult;
+        }
+
+        /**
+         * Merges StreamElements donations with local donation data
+         * @function
+         * @param {Object} seResult - Processed StreamElements donation data
+         * @param {Object} localData - Local donation data to merge
+         * @returns {Object} Combined donation data with unified totals
+         * @description Combines donation data while handling duplicates and
+         * maintaining proper sorting and totals
+         */
+        function mergeWithLocalDonations(seResult, localData) {
+            const mergedData = {
+                donations: [],
+                overall_total: { amount: 0, donation_count: 0 }
+            };
+
+            // Create a map to track unique donors by name (case insensitive)
+            const donorsMap = new Map();
+
+            // Combine all donors into a single array
+            const allDonors = [...seResult.donations, ...localData.donations];
+
+            // Process each donor and their donations
+            allDonors.forEach(donorData => {
+                const donorName = donorData.name.toLowerCase();
+
+                if (!donorsMap.has(donorName)) {
+                    // New donor - add them to the map and merged data
+                    donorsMap.set(donorName, {
+                        name: donorData.name, // Keep original case for display
+                        individual_donations: [...donorData.individual_donations],
+                        total_amount: donorData.total_amount,
+                        total_donations: donorData.total_donations
+                    });
+                } else {
+                    // Existing donor - merge their donations
+                    const existingDonor = donorsMap.get(donorName);
+
+                    donorData.individual_donations.forEach(newDonation => {
+                        const isDuplicate = existingDonor.individual_donations.some(existingDonation =>
+                            existingDonation.timestamp === newDonation.timestamp
+                        );
+
+                        if (!isDuplicate) {
+                            existingDonor.individual_donations.push(newDonation);
+                            existingDonor.total_amount = Number((existingDonor.total_amount + newDonation.amount).toFixed(2));
+                            existingDonor.total_donations += 1;
+                        }
+                    });
+                }
+            });
+
+            // Convert map back to array
+            mergedData.donations = Array.from(donorsMap.values());
+
+            // Sort all donations by timestamp for each donor
+            mergedData.donations.forEach(donor => {
+                donor.individual_donations.sort((a, b) =>
+                    new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+                );
+            });
+
+            // Sort donors by total amount
+            mergedData.donations.sort((a, b) => b.total_amount - a.total_amount);
+
+            // Calculate overall totals
+            mergedData.overall_total.amount = Number(
+                mergedData.donations.reduce((sum, donor) => sum + donor.total_amount, 0).toFixed(2)
+            );
+            mergedData.overall_total.donation_count = mergedData.donations.reduce(
+                (count, donor) => count + donor.total_donations, 0
+            );
+
+            return mergedData;
+        }
+
+        /**
+         * Fetches participant data from Extra Life API
+         * @function
+         * @description Retrieves and updates total donations and fundraising goal
+         * Handles both API and custom variable data sources
+         * @throws {Error} When API requests fail
+         */
+        function fetchExtraLifeDonationData() {
+            if (CONFIG.display.progressBar.hideBeforeStreamStartTime && !hasStreamStarted()) return;
+
+            if (CONFIG.extraLife.useExtraLife) {
+                const url = `https://www.extra-life.org/api/participants/${CONFIG.extraLife.participantId}`;
+                $.ajax({
+                    url: url,
+                    method: "GET",
+                    success: function (data) {
+                        const total = data.sumDonations || 0;
+                        State.fundraisingGoal = data.fundraisingGoal || CONFIG.mode.defaultDonationGoal;
+
+                        if (total !== State.total) {
+                            updateProgressBar(State.fundraisingGoal, total);
+                            State.total = total;
+                        }
+                    },
+                    error: function (jqXHR, textStatus, errorThrown) {
+                        console.error(`AJAX Request Failed: ${textStatus}`);
+                        console.error(`Status: ${jqXHR.status}`);
+                        console.error(`Error Thrown: ${errorThrown}`);
+                        console.error(`Response: ${jqXHR.responseText}`);
+                    }
+                });
+            } else {
+                const currentDonations = parseCustomVariable(CONFIG.mode.customVariables.current);
+                const donationGoal = parseCustomVariable(CONFIG.mode.customVariables.goal);
+
+                if (currentDonations !== State.total) {
+                    updateProgressBar(donationGoal, currentDonations);
+                    State.total = currentDonations;
+                    State.fundraisingGoal = donationGoal;
+                }
+            }
+        }
+
+        /**
+         * Fetches detailed donation information from Extra Life API
+         * @function
+         * @description Retrieves individual donation data and updates displays
+         * Handles fallback to custom data when Extra Life is disabled
+         * @throws {Error} When API requests fail
+         */
+        function fetchExtraLifeDonations() {
+            if (CONFIG.display.progressBar.hideBeforeStreamStartTime && !hasStreamStarted()) return;
+
+            if (CONFIG.extraLife.useExtraLife) {
+                const url = `https://www.extra-life.org/api/participants/${CONFIG.extraLife.participantId}/donations`;
+                $.ajax({
+                    url: url,
+                    method: "GET",
+                    success: function (donations) {
+                        checkNewDonations(donations);
+                        updateDonorInfo(donations);
+                    },
+                    error: function (jqXHR, textStatus, errorThrown) {
+                        console.error(`AJAX Request Failed: ${textStatus}`);
+                        console.error(`Status: ${jqXHR.status}`);
+                        console.error(`Error Thrown: ${errorThrown}`);
+                        console.error(`Response: ${jqXHR.responseText}`);
+                    }
+                });
+            } else if (CONFIG.mode.useCustomDonationData) {
+                updateCustomDonations();
+            } else {
+                const textConfig = CONFIG.content.templates.default;
+                document.getElementById('donorInfo').innerText = textConfig.donations.recentDonations;
+                document.getElementById('largestDonation').innerText =
+                    textConfig.donations.largestDonationFormat
+                        .replace('{amount}', State.total.toFixed(2))
+                        .replace('{name}', textConfig.donations.defaultDonorName);
+                document.getElementById('additionalInfo').innerText = textConfig.donations.supportMessage;
+            }
+        }
+
+        /**
+         * Sets up donation information rotation system
+         * @function
+         * @description Initializes and manages the rotation of donor information
+         * across different data sources (Extra Life, StreamElements, Custom)
+         */
+        function initializeRotation() {
+            let rotationTimer = null;
+
+            // Clear any existing rotation timer
+            if (rotationTimer) {
+                clearInterval(rotationTimer);
+                rotationTimer = null;
+            }
+
+            let currentDonationIndex = 0;
+
+            // Function to perform the rotation
+            function rotate() {
+                if (CONFIG.extraLife.useExtraLife) {
+                    // Handle Extra Life rotation
+                    if (State.donations.length > 0) {
+                        State.donorIndex = (State.donorIndex + 1) % State.donations.length;
+                        updateRecentDonationDisplay(State.donations[State.donorIndex]);
+                    }
+                } else if (CONFIG.streamElements.useStreamElements) {
+                    // Handle Stream Elements rotation
+                    if (State.donations && State.donations.length > 0) {
+                        State.donorIndex = (State.donorIndex + 1) % State.donations.length;
+                        updateRecentDonationDisplay(State.donations[State.donorIndex]);
+                    }
+                } else if (CONFIG.mode.useCustomDonationData) {
+                    // Handle custom donation data rotation
+                    const donationData = CONFIG.mode.customVariables.recentDonations[0];
+                    if (donationData?.donations?.length > 0) {
+                        currentDonationIndex = (currentDonationIndex + 1) % donationData.donations.length;
+                        updateRecentDonationDisplay(donationData.donations[currentDonationIndex]);
+                    }
+                }
+            }
+
+            // Do an immediate rotation if visible
+            rotate();
+
+            // Set up the interval based on the appropriate configuration
+            const interval = CONFIG.extraLife.useExtraLife
+                ? toMS(CONFIG.extraLife.extralifeDonorRotationInterval)
+                : CONFIG.streamElements.useStreamElements
+                    ? toMS(CONFIG.timing.customDonorRotationInterval)
+                    : toMS(CONFIG.timing.customDonorRotationInterval);
+
+            rotationTimer = setInterval(rotate, interval);
+        }
+
+        /**
+         * Processes custom donation data
+         * Handles JSON formatted donation data
+         * Updates displays and progress
+         * Manages milestone tracking
+        */
+        let currentDonationIndex = 0;
+        function updateCustomDonations() {
+            const donationData = CONFIG.mode.customVariables.recentDonations[0];
+            const currentAmount = parseFloat(CONFIG.mode.customVariables.current) || 0;
+
+            // Update displays
+            if (CONFIG.mode.useCustomDonationData && donationData?.donations?.length > 0) {
+                updateRecentDonationDisplay(donationData.donations[0]);
+                updateLargestDonationDisplay();
+            } else {
+                updateRecentDonationDisplay(null);
+                updateLargestDonationDisplay();
+            }
+
+            // Update progress and goals
+            if (CONFIG.mode.useCustomDonationData && donationData?.overall_total) {
+                const currentDonations = donationData.overall_total.amount;
+                let donationGoal = parseCustomVariable(CONFIG.mode.customVariables.goal);
+
+                if (CONFIG.mode.useMilestonesAsGoals) {
+                    const nextMilestone = findNextMilestoneGoal(currentDonations);
+                    donationGoal = nextMilestone?.amount ||
+                        [...CONFIG.content.milestones].reverse().find(m => m.amount > 0)?.amount ||
+                        donationGoal;
+                }
+
+                if (currentDonations !== State.total) {
+                    updateProgressBar(donationGoal, currentDonations);
+                    State.total = currentDonations;
+                    State.fundraisingGoal = donationGoal;
+                }
+            } else {
+                const currentDonations = currentAmount;
+                let donationGoal = parseCustomVariable(CONFIG.mode.customVariables.goal);
+
+                if (CONFIG.mode.useMilestonesAsGoals) {
+                    const nextMilestone = findNextMilestoneGoal(currentDonations);
+                    donationGoal = nextMilestone?.amount ||
+                        [...CONFIG.content.milestones].reverse().find(m => m.amount > 0)?.amount ||
+                        donationGoal;
+                }
+
+                if (currentDonations !== State.total) {
+                    updateProgressBar(donationGoal, currentDonations);
+                    State.total = currentDonations;
+                    State.fundraisingGoal = donationGoal;
+                }
+            }
+        }
+
+        /**
+         * Manages recent donation information
+         * Formats donation messages
+         * Handles timestamp display
+         * Manages rotation of multiple donations
+        */
+        function updateRecentDonationDisplay(donation) {
+            const modeType = CONFIG.extraLife.useExtraLife ? 'extraLife' : 'default';
+            const textConfig = CONFIG.content.templates[modeType];
+
+            // Check for custom message override first
+            if (CONFIG.mode.useCustomRecentMessage) {
+                document.getElementById('donorInfo').innerText = textConfig.donations.customRecentMessage;
+                return;
+            }
+
+            if (!donation) {
+                // Check for custom amount when no donation data exists
+                const currentAmount = parseFloat(CONFIG.mode.customVariables.current) || 0;
+                if (currentAmount > 0) {
+                    const displayText = textConfig.donations.donationFormat
+                        .replace('{name}', textConfig.donations.defaultDonorName)
+                        .replace('{amount}', currentAmount.toFixed(2));
+                    document.getElementById('donorInfo').innerText = displayText;
+                } else {
+                    document.getElementById('donorInfo').innerText = textConfig.donations.recentDonations;
+                }
+                return;
+            }
+
+            let displayText;
+            let timestamp;
+
+            // Handle Extra Life donations
+            if (CONFIG.extraLife.useExtraLife) {
+                displayText = textConfig.donations.donationFormat
+                    .replace('{name}', donation.displayName || textConfig.donations.defaultDonorName)
+                    .replace('{amount}', donation.amount.toFixed(2));
+                timestamp = donation.createdDateUTC;
+            } else {
+                // Handle custom donation data
+                if (donation.individual_donations && donation.individual_donations.length > 0) {
+                    // Get the most recent individual donation
+                    const mostRecentDonation = donation.individual_donations.reduce((latest, current) => {
+                        return new Date(current.timestamp) > new Date(latest.timestamp) ? current : latest;
+                    });
+
+                    displayText = textConfig.donations.donationFormat
+                        .replace('{name}', donation.name)
+                        .replace('{amount}', mostRecentDonation.amount.toFixed(2));
+                    timestamp = mostRecentDonation.timestamp;
+                } else {
+                    // Fallback if no individual donations exist
+                    displayText = textConfig.donations.donationFormat
+                        .replace('{name}', donation.name)
+                        .replace('{amount}', (donation.total_amount || 0).toFixed(2));
+                }
+            }
+
+            // Add timestamp if enabled and timestamp exists
+            const finalDisplayText = CONFIG.mode.showDonationTimestamp && timestamp
+                ? `${displayText} ${formatTimestamp(timestamp)}`
+                : displayText;
+
+            document.getElementById('donorInfo').innerText = finalDisplayText;
+        }
+
+        /**
+         * Updates largest donation information display
+         * @function
+         * @description Manages and formats the display of the largest donation
+         * Handles different data sources and tie-breaking scenarios
+         */
+        function updateLargestDonationDisplay() {
+            const modeType = CONFIG.extraLife.useExtraLife ? 'extraLife' : 'default';
+            const textConfig = CONFIG.content.templates[modeType];
+
+            // Check for custom message override
+            if (CONFIG.mode.useCustomLargestMessage) {
+                document.getElementById('largestDonation').innerText = textConfig.donations.customLargestMessage;
+                return;
+            }
+
+            // Handle Extra Life donations
+            if (CONFIG.extraLife.useExtraLife) {
+                if (State.largestDonation && State.largestDonation.amount > 0) {
+                    document.getElementById('largestDonation').innerText = textConfig.donations.largestDonationFormat
+                        .replace('{amount}', State.largestDonation.amount.toFixed(2))
+                        .replace('{name}', State.largestDonation.displayName || textConfig.donations.defaultDonorName);
+                } else {
+                    document.getElementById('largestDonation').innerText = textConfig.donations.noDonations;
+                }
+                return;
+            }
+
+            // Handle StreamElements data
+            if (CONFIG.streamElements.useStreamElements && State.donations && State.donations.length > 0) {
+                let largestAmount = 0;
+                let largestDonations = [];
+
+                // Find all donations matching the largest amount
+                State.donations.forEach(donor => {
+                    donor.individual_donations.forEach(donation => {
+                        if (donation.amount > largestAmount) {
+                            largestAmount = donation.amount;
+                            largestDonations = [{
+                                name: donor.name,
+                                amount: donation.amount,
+                                timestamp: donation.timestamp
+                            }];
+                        } else if (donation.amount === largestAmount) {
+                            largestDonations.push({
+                                name: donor.name,
+                                amount: donation.amount,
+                                timestamp: donation.timestamp
+                            });
+                        }
+                    });
+                });
+
+                if (largestDonations.length > 0) {
+                    let displayName;
+                    if (CONFIG.mode.largestDonationTieMode === 'recent') {
+                        // Sort by timestamp and take most recent
+                        largestDonations.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+                        displayName = largestDonations[0].name;
+                    } else {
+                        // Combine all donor names with same amount
+                        displayName = [...new Set(largestDonations.map(d => d.name))].join(' & ');
+                    }
+
+                    const displayText = textConfig.donations.largestDonationFormat
+                        .replace('{amount}', largestAmount.toFixed(2))
+                        .replace('{name}', displayName);
+
+                    document.getElementById('largestDonation').innerText = displayText;
+                    return;
+                }
+            }
+
+            // Handle JSON data if available
+            if (CONFIG.mode.useCustomDonationData && CONFIG.mode.customVariables.recentDonations?.[0]?.donations?.length > 0) {
+                const largestDonation = findLargestCustomDonation();
+                if (largestDonation && largestDonation.amount > 0) {
+                    let displayText = textConfig.donations.largestDonationFormat
+                        .replace('{amount}', largestDonation.amount.toFixed(2))
+                        .replace('{name}', largestDonation.name);
+
+                    if (largestDonation.name.includes('&')) {
+                        displayText = displayText.replace('by', 'by donors');
+                    }
+
+                    document.getElementById('largestDonation').innerText = displayText;
+                    return;
+                }
+            }
+
+            // Fallback to current amount
+            const currentAmount = parseFloat(CONFIG.mode.customVariables.current) || State.total;
+            if (currentAmount > 0) {
+                document.getElementById('largestDonation').innerText =
+                    textConfig.donations.largestDonationFormat
+                        .replace('{amount}', currentAmount.toFixed(2))
+                        .replace('{name}', textConfig.donations.defaultDonorName);
+                return;
+            }
+
+            // No donations case
+            document.getElementById('largestDonation').innerText = textConfig.donations.noDonations;
+        }
+
+
+        /**
+         * Finds the largest donation across all sources
+         * @function
+         * @returns {Object|null} Largest donation info or null if no donations
+         * @description Processes all donations to find the largest amount
+         * Handles tie scenarios based on configuration
+         */
+        function findLargestCustomDonation() {
+            const donationData = CONFIG.mode.customVariables.recentDonations[0];
+            if (!donationData?.donations) {
+                // Handle fallback to current amount when no JSON data
+                const currentAmount = parseFloat(CONFIG.mode.customVariables.current) || 0;
+                if (currentAmount > 0) {
+                    return {
+                        name: CONFIG.content.templates.default.donations.defaultDonorName,
+                        amount: currentAmount
+                    };
+                }
+                return null;
+            }
+
+            let largestAmount = 0;
+            let largestDonations = [];
+
+            // Process all donations to find largest
+            donationData.donations.forEach(donor => {
+                if (donor.individual_donations?.length > 0) {
+                    donor.individual_donations.forEach(donation => {
+                        if (donation.amount > largestAmount) {
+                            largestAmount = donation.amount;
+                            largestDonations = [{
+                                name: donor.name,
+                                amount: donation.amount,
+                                timestamp: donation.timestamp
+                            }];
+                        } else if (donation.amount === largestAmount) {
+                            largestDonations.push({
+                                name: donor.name,
+                                amount: donation.amount,
+                                timestamp: donation.timestamp
+                            });
+                        }
+                    });
+                }
+            });
+
+            if (largestDonations.length === 0) return null;
+
+            // Apply tie mode logic
+            if (CONFIG.mode.largestDonationTieMode === 'recent') {
+                largestDonations.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+                return largestDonations[0];
+            } else {
+                const names = [...new Set(largestDonations.map(d => d.name))];
+                return {
+                    name: names.length > 1 ? names.join(' & ') : names[0],
+                    amount: largestAmount
+                };
+            }
+        }
+
+        /**
+         * Updates progress visualization
+         * Calculates and applies progress percentage
+         * Updates milestone displays
+         * Manages goal text displays
+        */
+        function updateProgressBar(goal, total) {
+            let currentGoal = goal;
+            let currentTotal = total;
+
+            if (CONFIG.mode.useMilestonesAsGoals && !CONFIG.extraLife.useExtraLife) {
+                const nextMilestone = findNextMilestoneGoal(total);
+                if (nextMilestone) {
+                    currentGoal = nextMilestone.amount;
+                } else {
+                    const lastValidMilestone = [...CONFIG.content.milestones]
+                        .reverse()
+                        .find(m => m.amount > 0);
+                    currentGoal = lastValidMilestone ? lastValidMilestone.amount : goal;
+                }
+            }
+
+            const percentage = Math.min((currentTotal / currentGoal) * 100, 100);
+            const progressBar = document.getElementById('progressBar');
+            const donationStatus = document.getElementById('donationStatus');
+            const milestoneLabel = document.getElementById('milestoneLabel');
+
+            // Set progress bar width
+            progressBar.style.width = `${percentage}%`;
+
+            // Format numbers without decimal places if they're whole numbers
+            const formatNumber = (num) => {
+                return Number.isInteger(num) ? num.toString() : num.toFixed(2);
+            };
+
+            // Update donation status
+            donationStatus.innerText = `$${formatNumber(currentTotal)}/$${formatNumber(currentGoal)}`;
+
+            // Clear milestone label first
+            milestoneLabel.innerText = '';
+
+            // Determine what to show in milestone label area
+            const showPercentage = CONFIG.display.progressBar.showPercentage;
+            const isExtraLife = CONFIG.extraLife.useExtraLife;
+            const hasMilestones = CONFIG.content.milestones && CONFIG.content.milestones.length > 0;
+
+            // Show percentage if showPercentage is enabled and no milestones are configured
+            if (showPercentage && !hasMilestones) {
+                milestoneLabel.innerText = `${Math.floor(percentage)}%`;
+                return;
+            }
+
+            // If we have milestones, handle them
+            if (hasMilestones) {
+                updateMilestones(currentTotal);
+            }
+        }
+
+        /**
+         * Updates milestone information display
+         * @function
+         * @param {number} total - Current donation total
+         * @description Updates milestone text based on current progress
+         * Handles different display modes for Extra Life vs custom milestones
+         */
+        function updateMilestones(total) {
+            const milestoneLabel = document.getElementById('milestoneLabel');
+
+            if (!CONFIG.content.milestones || CONFIG.content.milestones.length === 0) {
+                return;
+            }
+
+            // If Extra Life or not using milestones as goals, show title and amount
+            if (CONFIG.extraLife.useExtraLife || !CONFIG.mode.useMilestonesAsGoals) {
+                for (let milestone of CONFIG.content.milestones) {
+                    if (total < milestone.amount) {
+                        milestoneLabel.innerText = `${milestone.title}: $${milestone.amount}`;
+                        return;
+                    }
+                }
+
+                const lastMilestone = CONFIG.content.milestones[CONFIG.content.milestones.length - 1];
+                milestoneLabel.innerText = `${lastMilestone.title}: $${lastMilestone.amount}`;
+            } else {
+                // If using milestones as goals, only show title
+                for (let milestone of CONFIG.content.milestones) {
+                    if (total < milestone.amount) {
+                        milestoneLabel.innerText = milestone.title;
+                        return;
+                    }
+                }
+
+                const lastMilestone = CONFIG.content.milestones[CONFIG.content.milestones.length - 1];
+                milestoneLabel.innerText = lastMilestone.title;
+            }
+        }
+
+        /**
+         * Finds the next milestone goal based on current amount
+         * @function
+         * @param {number} currentAmount - Current donation total
+         * @returns {Object|null} Next milestone or null if none available
+         * @description Determines the next milestone target above current amount
+         */
+        function findNextMilestoneGoal(currentAmount) {
+            for (let milestone of CONFIG.content.milestones) {
+                if (milestone.amount > currentAmount && milestone.amount > 0) {
+                    return milestone;
+                }
+            }
+            return null;
+        }
+
+        /**
+         * Checks for new donations in current data
+         * @function
+         * @param {Array} currentDonations - Latest donation data
+         * @description Compares current donations with stored state
+         * Identifies and processes new donations
+         */
+        function checkNewDonations(currentDonations) {
+            if (!State.donations.length) {
+                State.donations = currentDonations;
+                return;
+            }
+
+            const newDonations = currentDonations.filter(donation => {
+                return !State.donations.some(lastDonation =>
+                    lastDonation.donationID === donation.donationID ||
+                    (lastDonation.displayName === donation.displayName &&
+                        lastDonation.amount === donation.amount &&
+                        lastDonation.createdDateUTC === donation.createdDateUTC)
+                );
+            });
+
+            if (newDonations.length > 0) {
+                newDonations.forEach(donation => {
+                    showNewDonation(donation);
+                });
+            }
+
+            State.donations = currentDonations;
+        }
+
+        /**
+         * Updates donor information displays
+         * @function
+         * @param {Array} donations - Donation data to display
+         * @description Manages donor information display and formatting
+         * Handles empty states and largest donation tracking
+         */
+        function updateDonorInfo(donations) {
+            const textConfig = CONFIG.content.templates[CONFIG.extraLife.useExtraLife ? 'extraLife' : 'default'];
+
+            if (!donations.length) {
+                document.getElementById('donorInfo').innerText = textConfig.donations.noDonations;
+                document.getElementById('largestDonation').innerText = textConfig.donations.largestDonationFormat
+                    .replace('{amount}', '0')
+                    .replace('{name}', textConfig.donations.defaultDonorName);
+                return;
+            }
+
+            // Find all donations matching the largest amount
+            let largestAmount = 0;
+            let largestDonations = [];
+
+            donations.forEach(donation => {
+                if (donation.amount > largestAmount) {
+                    largestAmount = donation.amount;
+                    largestDonations = [donation];
+                } else if (donation.amount === largestAmount) {
+                    largestDonations.push(donation);
+                }
+            });
+
+            // Apply tie mode logic
+            if (largestDonations.length > 0) {
+                let displayName;
+                if (CONFIG.mode.largestDonationTieMode === 'recent') {
+                    // Sort by date and take most recent
+                    largestDonations.sort((a, b) => new Date(b.createdDateUTC) - new Date(a.createdDateUTC));
+                    State.largestDonation = largestDonations[0];
+                } else {
+                    // Combine all donor names with same amount
+                    displayName = largestDonations.map(d => d.displayName || textConfig.donations.defaultDonorName).join(' & ');
+                    State.largestDonation = {
+                        amount: largestAmount,
+                        displayName: displayName
+                    };
+                }
+                updateLargestDonationDisplay();
+            }
+
+            updateRecentDonationDisplay(donations[State.donorIndex]);
+        }
+
+
+        /* Show New Donation */
+        function showNewDonation(donation) {
+            updateRecentDonationDisplay(donation);
+
+            if (donation.amount > State.largestDonation.amount) {
+                State.largestDonation = donation;
+                updateLargestDonationDisplay();
+            }
+        }
+    </script>
+</div>
