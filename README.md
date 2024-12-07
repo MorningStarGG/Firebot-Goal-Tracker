@@ -162,7 +162,7 @@ The tracker can be updated in real-time using:
    ```
    npm install
    ```
-3. Compile the extension:
+3. Build the script:
    ```
    npm run build:prod
    ```
