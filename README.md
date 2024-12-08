@@ -137,7 +137,7 @@ The tracker can be updated in real-time using:
 
 ## Requirements
 
-- Firebot 5.0 or higher
+- Firebot: 5.63.2 or higher
 
 ## Installation
 
