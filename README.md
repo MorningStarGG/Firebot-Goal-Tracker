@@ -137,7 +137,7 @@ The tracker can be updated in real-time using:
 
 ## Requirements
 
-- Firebot: 5.63.2 or higher
+- Firebot 5.63.2 or higher
 
 ## Installation
 
@@ -195,3 +195,9 @@ For issues or feature requests, please check the following:
 ## License
 
 This script is provided as-is under the GPL-3.0 license. You are free to modify and distribute it according to your needs.
+
+## Acknowledgments
+Special thanks to the Firebot community for their support and contributions.
+
+---
+**AI Disclaimer:** Parts of this was made with vaious AI tools to speed development time.
