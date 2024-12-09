@@ -447,8 +447,8 @@ export function goalTrackerLocalUpdateEffectType() {
         optionsTemplate: `
                         <eos-container header="Donation Information" aria-label="Local Donor Data">
                             <div class="input-group" role="form" aria-label="Donation input form">
-                                <firebot-radios options="{ add: 'Add Donation', remove: 'Remove Donation' }" model="effect.operation"
-                                    inline="true" style="padding-bottom: 5px;" />
+                                <firebot-radios options="{ add: 'Add Donation', remove: 'Remove Donation' }" model="effect.operation" inline="true"
+                                    style="padding-bottom: 5px;" aria-label="Donation Operation Selection"></firebot-radios>
                                 <div class="row" style="margin-bottom: 10px;">
                                     <div class="col-md-6">
                                         <firebot-input input-title="Name" model="effect.donorName" placeholder="Enter donor name"
