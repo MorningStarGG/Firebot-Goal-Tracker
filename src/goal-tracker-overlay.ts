@@ -419,6 +419,7 @@ export function goalTrackerLocalUpdateEffectType() {
         donorName: string;
         donationAmount: number;
         variableName: string;
+        operation: 'add' | 'remove';
     }
 
     interface Donor {
@@ -426,14 +427,6 @@ export function goalTrackerLocalUpdateEffectType() {
         individual_donations: Array<{ amount: number, timestamp: string }>;
         total_amount: number;
         total_donations: number;
-    }
-
-    interface IncomingData {
-        donations: Donor[];
-        overall_total: {
-            amount: number;
-            donation_count: number;
-        };
     }
 
     const localUpdateEffectType: Firebot.EffectType<LocalUpdateEffectModel> = {
@@ -452,112 +445,131 @@ export function goalTrackerLocalUpdateEffectType() {
             }
         },
         optionsTemplate: `
-                    <eos-container header="Donation Information" aria-label="Local Donor Data">
-                        <div class="input-group" role="form" aria-label="Donation input form">
-                            <div class="row" style="margin-bottom: 10px;">
-                                <div class="col-md-6">
-                                    <firebot-input input-title="Name" model="effect.donorName" placeholder="Enter donor name"
-                                        aria-label="Donor name input" aria-required="true"></firebot-input>
+                        <eos-container header="Donation Information" aria-label="Local Donor Data">
+                            <div class="input-group" role="form" aria-label="Donation input form">
+                                <firebot-radios options="{ add: 'Add Donation', remove: 'Remove Donation' }" model="effect.operation"
+                                    inline="true" style="padding-bottom: 5px;" />
+                                <div class="row" style="margin-bottom: 10px;">
+                                    <div class="col-md-6">
+                                        <firebot-input input-title="Name" model="effect.donorName" placeholder="Enter donor name"
+                                            aria-label="Donor name input" aria-required="true"></firebot-input>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <firebot-input input-title="Amount" model="effect.donationAmount" placeholder="Enter donation amount"
+                                            aria-label="Donation amount input" aria-required="true"></firebot-input>
+                                    </div>
                                 </div>
-                                <div class="col-md-6">
-                                    <firebot-input input-title="Amount" model="effect.donationAmount" placeholder="Enter donation amount"
-                                        aria-label="Donation amount input" aria-required="true"></firebot-input>
-                                </div>
+                                <firebot-input input-title="Variable Name" model="effect.variableName" placeholder="Enter variable name"
+                                    aria-label="Variable name input" aria-required="true"></firebot-input>
                             </div>
-                            <firebot-input input-title="Variable Name" model="effect.variableName" placeholder="Enter variable name"
-                                aria-label="Variable name input" aria-required="true"></firebot-input>
-                        </div>
-                    </eos-container>
+                        </eos-container>
         `,
         /**
          * Processes incoming donation data by:
-         * 1. Finding or creating donor record
-         * 2. Adding new donation while preserving history
+         * 1. Finding creating or removing donor record
+         * 2. Adding or removing donations while preserving history
          * 3. Updating donor and overall totals
          * 4. Sorting donations by timestamp
          * 5. Sorting donors by total amount
          */
         onTriggerEvent: async (event) => {
-            let incomingData: {
-                donations: Donor[];
-                overall_total: {
-                    amount: number;
-                    donation_count: number;
-                };
-            };
-
             try {
                 // Fetch and preserve existing data
                 const response = await fetch(`http://localhost:7472/api/v1/custom-variables/${event.effect.variableName}`);
                 const existingData = await response.json();
-
-                // Initialize with existing data structure
-                incomingData = {
+        
+                let incomingData = {
                     donations: existingData?.donations || [],
                     overall_total: existingData?.overall_total || {
                         amount: 0,
                         donation_count: 0
                     }
                 };
-
+        
                 const donorName = event.effect.donorName;
                 const donationAmount = Number(event.effect.donationAmount);
                 const timestamp = new Date().toISOString();
+        
+                // Remove donation from donor record
+                if (event.effect.operation === 'remove') {
+                    // Find donor and specific donation to remove
+                    const donor = incomingData.donations.find((d: Donor) => d.name.toLowerCase() === donorName.toLowerCase());
+                    if (donor) {
+                        const donationIndex = donor.individual_donations.findIndex(
+                            (d: { amount: number }) => Math.abs(d.amount - donationAmount) < 0.01
+                        );
+                        
+                        if (donationIndex !== -1) {
+                            // Remove the donation
+                            donor.individual_donations.splice(donationIndex, 1);
+                            donor.total_amount = Number((donor.total_amount - donationAmount).toFixed(2));
+                            donor.total_donations -= 1;
+                            incomingData.overall_total.amount = Number((incomingData.overall_total.amount - donationAmount).toFixed(2));
+                            incomingData.overall_total.donation_count -= 1;
+        
+                            // Remove donor if no donations remain
+                            if (donor.individual_donations.length === 0) {
+                                incomingData.donations = incomingData.donations.filter((d: Donor) => d.name !== donor.name);
 
-                // Find existing donor while preserving their history
-                let donor = incomingData.donations.find((d: Donor) => d.name.toLowerCase() === donorName.toLowerCase());
-
-                if (!donor) {
-                    // Create new donor if they don't exist
-                    donor = {
-                        name: donorName,
-                        individual_donations: [],
-                        total_amount: 0,
-                        total_donations: 0
-                    };
-                    incomingData.donations.push(donor);
+                            }
+                        }
+                    }
                 } else {
-                    // Ensure existing donor has all required properties
-                    donor.individual_donations = donor.individual_donations || [];
-                    donor.total_amount = donor.total_amount || 0;
-                    donor.total_donations = donor.total_donations || 0;
+                    // Find existing donor while preserving their history
+                    let donor = incomingData.donations.find((d: Donor) => d.name.toLowerCase() === donorName.toLowerCase());
+        
+                    if (!donor) {
+                        // Create new donor if they don't exist
+                        donor = {
+                            name: donorName,
+                            individual_donations: [],
+                            total_amount: 0,
+                            total_donations: 0
+                        };
+                        incomingData.donations.push(donor);
+                    } else {
+                        // Ensure existing donor has all required properties
+                        donor.individual_donations = donor.individual_donations || [];
+                        donor.total_amount = donor.total_amount || 0;
+                        donor.total_donations = donor.total_donations || 0;
+                    }
+        
+                    // Add new donation while preserving existing ones
+                    donor.individual_donations.push({
+                        amount: donationAmount,
+                        timestamp: timestamp
+                    });
+        
+                    // Update totals while maintaining precision
+                    donor.total_amount = Number((donor.total_amount + donationAmount).toFixed(2));
+                    donor.total_donations += 1;
+        
+                    // Update overall totals while maintaining precision
+                    incomingData.overall_total.amount = Number((incomingData.overall_total.amount + donationAmount).toFixed(2));
+                    incomingData.overall_total.donation_count += 1;
+        
+                    // Sort individual donations by timestamp (newest first)
+                    donor.individual_donations.sort((a: { timestamp: string }, b: { timestamp: string }) =>
+                        new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+                    );
+        
+                    // Sort donors by total amount (highest first)
+                    incomingData.donations.sort((a: Donor, b: Donor) => b.total_amount - a.total_amount);
                 }
-
-                // Add new donation while preserving existing ones
-                donor.individual_donations.push({
-                    amount: donationAmount,
-                    timestamp: timestamp
-                });
-
-                // Update totals while maintaining precision
-                donor.total_amount = Number((donor.total_amount + donationAmount).toFixed(2));
-                donor.total_donations += 1;
-
-                // Update overall totals while maintaining precision
-                incomingData.overall_total.amount = Number((incomingData.overall_total.amount + donationAmount).toFixed(2));
-                incomingData.overall_total.donation_count += 1;
-
-                // Sort individual donations by timestamp (newest first)
-                donor.individual_donations.sort((a: { timestamp: string }, b: { timestamp: string }) =>
-                    new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
-                );
-
-                // Sort donors by total amount (highest first)
-                incomingData.donations.sort((a: Donor, b: Donor) => b.total_amount - a.total_amount);
-
+        
                 // Save merged data back to Firebot
                 await fetch(`http://localhost:7472/api/v1/custom-variables/${event.effect.variableName}`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ ttl: 0, data: incomingData })
                 });
-
+        
                 return { success: true };
             } catch (error) {
                 logger.error('Error:', error);
                 return { success: false };
             }
-        }
+        }        
     };
     return localUpdateEffectType;
 }
