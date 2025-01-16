@@ -198,33 +198,33 @@
                 <div class="control__indicator"></div>
             </label>
         </div>
-            <div class="input-group" style="margin-bottom: 10px;">
-                <color-picker-input model="effect.templates.colors.milestoneColor" label="Milestone Text Color"
-                    aria-label="Select milestone text color"></color-picker-input>
-            </div>
-            <div class="input-group">
-                <div ng-repeat="milestone in effect.milestones track by $index">
-                    <h4 style="margin-top: 0px;">Milestone {{$index + 1}}:</h4>
-                    <div class="input-group" style="margin-bottom: 10px;">
-                        <span class="input-group-addon">Name</span>
-                        <input type="text" class="form-control" ng-model="milestone.title"
-                            ng-model-options="{ updateOn: 'blur' }" placeholder="Title"
-                            aria-label="Enter name for milestone {{$index + 1}}">
-                        <span class="input-group-addon">Amount</span>
-                        <input type="number" class="form-control" ng-model="milestone.amount"
-                            ng-model-options="{ updateOn: 'blur', debounce: { default: 300, blur: 0 } }"
-                            placeholder="Amount" aria-label="Enter amount for milestone {{$index + 1}}">
-                        <span class="input-group-btn">
-                            <button class="btn btn-danger" ng-click="removeMilestone($index)"
-                                aria-label="Remove milestone {{$index + 1}}">
-                                <i class="far fa-trash-alt"></i>
-                            </button>
-                        </span>
-                    </div>
+        <div class="input-group" style="margin-bottom: 10px;">
+            <color-picker-input model="effect.templates.colors.milestoneColor" label="Milestone Text Color"
+                aria-label="Select milestone text color"></color-picker-input>
+        </div>
+        <div class="input-group">
+            <div ng-repeat="milestone in effect.milestones track by $index">
+                <h4 style="margin-top: 0px;">Milestone {{$index + 1}}:</h4>
+                <div class="input-group" style="margin-bottom: 10px;">
+                    <span class="input-group-addon">Name</span>
+                    <input type="text" class="form-control" ng-model="milestone.title"
+                        ng-model-options="{ updateOn: 'blur' }" placeholder="Title"
+                        aria-label="Enter name for milestone {{$index + 1}}">
+                    <span class="input-group-addon">Amount</span>
+                    <input type="number" class="form-control" ng-model="milestone.amount"
+                        ng-model-options="{ updateOn: 'blur', debounce: { default: 300, blur: 0 } }"
+                        placeholder="Amount" aria-label="Enter amount for milestone {{$index + 1}}">
+                    <span class="input-group-btn">
+                        <button class="btn btn-danger" ng-click="removeMilestone($index)"
+                            aria-label="Remove milestone {{$index + 1}}">
+                            <i class="far fa-trash-alt"></i>
+                        </button>
+                    </span>
                 </div>
-                <button class="btn btn-default" style="margin-bottom: 10px;" ng-click="addMilestone()"
-                    aria-label="Add new milestone">Add Milestone</button>
             </div>
+            <button class="btn btn-default" style="margin-bottom: 10px;" ng-click="addMilestone()"
+                aria-label="Add new milestone">Add Milestone</button>
+        </div>
     </eos-container>
 
     <!-- Display Settings -->
@@ -308,6 +308,11 @@
                 </div>
             </div>
         </div>
+        <div style="margin-bottom: 10px;">Info Section Position:
+            <dropdown-select options="infoPositions" selected="effect.display.infoSection.infoPosition"
+                on-update="setInfoPosition()" aria-label="Select info section position">
+            </dropdown-select>
+        </div>
     </eos-container>
 
     <!-- Info Section Animation Settings -->
@@ -355,6 +360,34 @@
 
     <!-- Donation Settings -->
     <eos-container header="Donation Settings" pad-top="true" aria-label="Donation configuration section">
+        <div class="row">
+            <div class="col-md-6">
+                <div class="input-group" style="margin-bottom: 10px;">
+                    <span class="input-group-addon">Date Range</span>
+                    <select class="form-control" ng-model="effect.streamElements.localDonationsPeriod"
+                        aria-label="Select time period for local donations">
+                        <option value="all">All Time</option>
+                        <option value="monthly">Monthly</option>
+                        <option value="weekly">Weekly</option>
+                        <option value="daily">Daily</option>
+                    </select>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div style="margin-bottom: 10px;">
+                    <firebot-input input-title="Goal Amount" pad-top="true" model="effect.donationGoal"
+                        placeholder="Goal amount"
+                        ng-model-options="{ updateOn: 'blur', debounce: { default: 300, blur: 0 } }"
+                        aria-label="Enter fundraising goal amount"></firebot-input>
+                </div>
+            </div>
+            <div style="margin-bottom: 10px;">
+                <firebot-input input-title="Currency Symbol" model="effect.templates.donations.currencySymbol"
+                    placeholder="$" ng-model-options="{ updateOn: 'blur' }" aria-label="Enter currency symbol">
+                </firebot-input>
+            </div>
+        </div>
+
         <div class="controls-fb-inline">
             <label class="control-fb control--checkbox">
                 <input type="checkbox" ng-model="effect.useCustomRecentMessage"
@@ -369,46 +402,10 @@
                 <div class="control__indicator"></div>
             </label>
             <label class="control-fb control--checkbox">
-                <input type="checkbox" ng-model="effect.useCustomDonationData"
-                    aria-label="Use custom JSON donation data">
-                Use JSON Donation Data
-                <div class="control__indicator"></div>
-            </label>
-            <label class="control-fb control--checkbox">
                 <input type="checkbox" ng-model="effect.showDonationTimestamp" aria-label="Show donation timestamps">
                 Show Donation Timestamps
                 <div class="control__indicator"></div>
             </label>
-        </div>
-
-        <div style="margin-bottom: 10px;">
-            <firebot-input input-title="Goal Amount" pad-top="true" model="effect.customVariables.goal"
-                placeholder="Goal amount" ng-model-options="{ updateOn: 'blur', debounce: { default: 300, blur: 0 } }"
-                aria-label="Enter fundraising goal amount"></firebot-input>
-        </div>
-        <div style="margin-bottom: 10px;" ng-if="!effect.useCustomDonationData">
-            <firebot-input input-title="Current Amount" pad-top="true" model="effect.customVariables.current"
-                placeholder="Current donation amount"
-                ng-model-options="{ updateOn: 'blur', debounce: { default: 300, blur: 0 } }"
-                aria-label="Enter current donation amount"></firebot-input>
-        </div>
-        <div style="margin-bottom: 10px;" ng-if="effect.useCustomDonationData">
-            <firebot-input input-title="Custom Donations JSON" pad-top="true"
-                model="effect.customVariables.recentDonationsJson" rows="10"
-                placeholder="Enter donation data as a JSON array" ng-model-options="{ updateOn: 'blur' }"
-                aria-label="Enter custom donation data in JSON format"></firebot-input>
-        </div>
-
-        <div style="text-align: center; margin-bottom: 10px;" ng-if="effect.useCustomDonationData">
-            <button class="btn btn-primary" ng-click="copyExampleJson()" style="margin-right: 5px;"
-                aria-label="Copy example JSON to clipboard">Copy Example JSON</button>
-            <button class="btn btn-primary" ng-click="showExampleJson()" style="margin-left: 5px;"
-                aria-label="Display example JSON format">Show Example JSON</button>
-        </div>
-
-        <div id="example-json-display"
-            style="margin: 10px 0; display: none; text-align: left; font-size: 14px; border: 1px solid #ccc; padding: 10px; background-color: #24262A;"
-            aria-label="Example JSON display area">
         </div>
 
         <div class="input-group" style="margin-bottom: 10px;">
@@ -435,56 +432,57 @@
                                 aria-label="Select largest donor text color"></color-picker-input>
                         </div>
                     </div>
-                    <div>
-                        <color-picker-input model="effect.templates.colors.additionalTextColor" label="Additional Text"
-                            aria-label="Select additional text color"></color-picker-input>
-                    </div>
                 </div>
-
-                <h4>Donation Templates:</h4>
-                <div style="margin-bottom: 10px;" ng-if="effect.useCustomRecentMessage">
-                    <firebot-input input-title="First Row" model="effect.templates.donations.customRecentMessage"
-                        placeholder="Top Row Override" ng-model-options="{ updateOn: 'blur' }"
-                        aria-label="Enter custom text for first donation row"></firebot-input>
-                </div>
-                <div style="margin-bottom: 10px;" ng-if="effect.useCustomLargestMessage">
-                    <firebot-input input-title="Recent Format" model="effect.templates.donations.customLargestMessage"
-                        placeholder="Middle Row Override" ng-model-options="{ updateOn: 'blur' }"
-                        aria-label="Enter custom text for largest donation row"></firebot-input>
-                </div>
-                <div style="margin-bottom: 10px;" ng-if="!effect.useCustomRecentMessage">
-                    <firebot-input input-title="Recent Format" model="effect.templates.donations.donationFormat"
-                        placeholder="{name} donated ${amount}" ng-model-options="{ updateOn: 'blur' }"
-                        aria-label="Enter format for recent donations"></firebot-input>
-                </div>
-                <div style="margin-bottom: 10px;" ng-if="!effect.useCustomLargestMessage">
-                    <firebot-input input-title="Largest Format" model="effect.templates.donations.largestDonationFormat"
-                        placeholder="Largest Donation: ${amount} by {name}" ng-model-options="{ updateOn: 'blur' }"
-                        aria-label="Enter format for largest donation"></firebot-input>
-                </div>
-                <div style="margin-bottom: 10px;">
-                    <firebot-input input-title="Additional Message" model="effect.templates.donations.supportMessage"
-                        placeholder="Support the Stream!" ng-model-options="{ updateOn: 'blur' }"
-                        aria-label="Enter additional support message"></firebot-input>
-                </div>
-
-                <h4>Donation Placeholders:</h4>
-                <div style="margin-bottom: 10px;" ng-if="!effect.useCustomRecentMessage">
-                    <firebot-input input-title="Recent Placeholder" model="effect.templates.donations.recentDonations"
-                        placeholder="Current Fundraising" ng-model-options="{ updateOn: 'blur' }"
-                        aria-label="Enter placeholder for recent donations"></firebot-input>
-                </div>
-                <div style="margin-bottom: 10px;">
-                    <firebot-input input-title="No Donations Message" model="effect.templates.donations.noDonations"
-                        placeholder="No donations yet!" ng-model-options="{ updateOn: 'blur' }"
-                        aria-label="Enter message for when there are no donations"></firebot-input>
-                </div>
-                <div style="margin-bottom: 10px;">
-                    <firebot-input input-title="Default Donor Name" model="effect.templates.donations.defaultDonorName"
-                        placeholder="Anonymous" ng-model-options="{ updateOn: 'blur' }"
-                        aria-label="Enter default name for anonymous donors"></firebot-input>
+                <div>
+                    <color-picker-input model="effect.templates.colors.additionalTextColor" label="Additional Text"
+                        aria-label="Select additional text color"></color-picker-input>
                 </div>
             </div>
+
+            <h4>Donation Templates:</h4>
+            <div style="margin-bottom: 10px;" ng-if="effect.useCustomRecentMessage">
+                <firebot-input input-title="First Row" model="effect.templates.donations.customRecentMessage"
+                    placeholder="Top Row Override" ng-model-options="{ updateOn: 'blur' }"
+                    aria-label="Enter custom text for first donation row"></firebot-input>
+            </div>
+            <div style="margin-bottom: 10px;" ng-if="effect.useCustomLargestMessage">
+                <firebot-input input-title="Recent Format" model="effect.templates.donations.customLargestMessage"
+                    placeholder="Middle Row Override" ng-model-options="{ updateOn: 'blur' }"
+                    aria-label="Enter custom text for largest donation row"></firebot-input>
+            </div>
+            <div style="margin-bottom: 10px;" ng-if="!effect.useCustomRecentMessage">
+                <firebot-input input-title="Recent Format" model="effect.templates.donations.donationFormat"
+                    placeholder="{name} donated ${amount}" ng-model-options="{ updateOn: 'blur' }"
+                    aria-label="Enter format for recent donations"></firebot-input>
+            </div>
+            <div style="margin-bottom: 10px;" ng-if="!effect.useCustomLargestMessage">
+                <firebot-input input-title="Largest Format" model="effect.templates.donations.largestDonationFormat"
+                    placeholder="Largest Donation: ${amount} by {name}" ng-model-options="{ updateOn: 'blur' }"
+                    aria-label="Enter format for largest donation"></firebot-input>
+            </div>
+            <div style="margin-bottom: 10px;">
+                <firebot-input input-title="Additional Message" model="effect.templates.donations.supportMessage"
+                    placeholder="Support the Stream!" ng-model-options="{ updateOn: 'blur' }"
+                    aria-label="Enter additional support message"></firebot-input>
+            </div>
+
+            <h4>Donation Placeholders:</h4>
+            <div style="margin-bottom: 10px;" ng-if="!effect.useCustomRecentMessage">
+                <firebot-input input-title="Recent Placeholder" model="effect.templates.donations.recentDonations"
+                    placeholder="Current Fundraising" ng-model-options="{ updateOn: 'blur' }"
+                    aria-label="Enter placeholder for recent donations"></firebot-input>
+            </div>
+            <div style="margin-bottom: 10px;">
+                <firebot-input input-title="No Donations Message" model="effect.templates.donations.noDonations"
+                    placeholder="No donations yet!" ng-model-options="{ updateOn: 'blur' }"
+                    aria-label="Enter message for when there are no donations"></firebot-input>
+            </div>
+            <div style="margin-bottom: 10px;">
+                <firebot-input input-title="Default Donor Name" model="effect.templates.donations.defaultDonorName"
+                    placeholder="Anonymous" ng-model-options="{ updateOn: 'blur' }"
+                    aria-label="Enter default name for anonymous donors"></firebot-input>
+            </div>
+
         </div>
     </eos-container>
 
@@ -511,7 +509,7 @@
                 aria-label="Enter your Extra Life participant ID"></firebot-input>
         </div>
     </eos-container>
-    
+
     <!-- StreamElements Settings -->
     <eos-container header="StreamElements Settings" pad-top="true" aria-label="StreamElements integration settings">
         <div class="controls-fb-inline">
@@ -543,6 +541,12 @@
                             ng-model-options="{ updateOn: 'blur', debounce: { default: 300, blur: 0 } }"
                             aria-label="Set Tier 2 subscription value"></firebot-input>
                     </div>
+                    <div style="margin-bottom: 10px;">
+                        <firebot-input input-title="Value Per Bit" type="number" model="effect.streamElements.bitsValue"
+                            input-min="0" input-step="0.01" placeholder="0.01"
+                            ng-model-options="{ updateOn: 'blur', debounce: { default: 300, blur: 0 } }"
+                            aria-label="Set value per bit"></firebot-input>
+                    </div>
                 </div>
                 <div class="col-md-6">
                     <div class="input-group" style="margin-bottom: 10px;">
@@ -557,37 +561,15 @@
                             ng-model-options="{ updateOn: 'blur', debounce: { default: 300, blur: 0 } }"
                             aria-label="Set Tier 3 subscription value"></firebot-input>
                     </div>
+                    <div class="input-group" style="margin-bottom: 10px;">
+                        <span class="input-group-addon">Data Range</span>
+                        <select class="form-control" ng-model="effect.streamElements.summaryType"
+                            aria-label="Select StreamElements data range">
+                            <option value="monthly">Monthly</option>
+                            <option value="weekly">Weekly</option>
+                        </select>
+                    </div>
                 </div>
-                <div style="margin-bottom: 10px;">
-                    <firebot-input input-title="Value Per Bit" type="number" model="effect.streamElements.bitsValue"
-                        input-min="0" input-step="0.01" placeholder="0.01"
-                        ng-model-options="{ updateOn: 'blur', debounce: { default: 300, blur: 0 } }"
-                        aria-label="Set value per bit"></firebot-input>
-                </div>
-            </div>
-            <div style="margin-bottom: 10px;">
-                <firebot-input input-title="StreamElements Variable"
-                    model="effect.streamElements.streamElementsVariable"
-                    placeholder="Enter variable name for storing StreamElements data"
-                    ng-model-options="{ updateOn: 'blur' }"
-                    aria-label="Enter variable name to store StreamElements data"></firebot-input>
-            </div>
-
-            <div style="margin-bottom: 10px;">
-                <firebot-input input-title="Local Variable" model="effect.streamElements.localDonationsVariable"
-                    placeholder="Enter variable name for local donations" ng-model-options="{ updateOn: 'blur' }"
-                    aria-label="Enter variable name for local donations"></firebot-input>
-            </div>
-            <div style="text-align: center; margin-bottom: 10px;">
-                <button class="btn btn-primary" ng-click="copyExampleJson('streamElements')" style="margin-right: 5px;"
-                    aria-label="Copy example JSON to clipboard">Copy Example JSON</button>
-                <button class="btn btn-primary" ng-click="showExampleJson('streamElements')" style="margin-left: 5px;"
-                    aria-label="Display example JSON format">Show Example JSON</button>
-            </div>
-
-            <div id="streamelements-json-display"
-                style="margin: 10px 0; display: none; text-align: left; font-size: 14px; border: 1px solid #ccc; padding: 10px; background-color: #24262A;"
-                aria-label="Example JSON display area">
             </div>
 
             <div style="margin-bottom: 10px;">
@@ -655,6 +637,8 @@
         </div>
     </eos-container>
 
+    <!-- Overlay Position and Instance Settings -->
+    <eos-overlay-position effect="effect" pad-top="true"></eos-overlay-position>
     <eos-overlay-instance effect="effect" pad-top="true"></eos-overlay-instance>
 
     <eos-container>

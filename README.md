@@ -15,8 +15,11 @@ A highly customizable goal and donation tracking system with countdown functiona
 ### Data Integration
 - Extra Life integration with auto-updating donation data
 - StreamElements integration with bits, subscriptions, and tips support
-- Custom JSON donation data support
 - Local donation tracking
+- Local JSON DB for storing donation data
+- Ability to reset individual users donations
+- Remove donations from the Local Donation using user/amount
+- Reset all donations for Extra Life, StreamElements, or Local
 
 ### Display Options
 - Customizable progress bar
@@ -25,6 +28,8 @@ A highly customizable goal and donation tracking system with countdown functiona
 - Animated transitions
 - Logo display support
 - Flexible countdown positioning
+- Overlay selection
+- Positiong options
 
 ### Visual Customization
 - Fully customizable color schemes
@@ -56,11 +61,6 @@ A highly customizable goal and donation tracking system with countdown functiona
 3. Configure subscription and bits values
 4. Optionally enable local donation merging
 
-#### Custom Data
-1. Enable "Use JSON Donation Data"
-2. Provide donation data in the required JSON format
-3. Set update intervals as needed
-
 ### Customization Options
 
 #### Visual Settings
@@ -74,34 +74,7 @@ A highly customizable goal and donation tracking system with countdown functiona
 - Countdown text
 - Milestone text
 - Support messages
-
-## JSON Data Format
-
-For custom donation tracking, use the following format:
-
-```json
-[
-    {
-        "donations": [
-            {
-                "name": "Donor Name",
-                "individual_donations": [
-                    {
-                        "amount": 100,
-                        "timestamp": "2024-11-06T12:30:00Z"
-                    }
-                ],
-                "total_amount": 100,
-                "total_donations": 1
-            }
-        ],
-        "overall_total": {
-            "amount": 100,
-            "donation_count": 1
-        }
-    }
-]
-```
+- Currency symbol can be changed
 
 ## Configuration Options
 
@@ -125,14 +98,14 @@ For custom donation tracking, use the following format:
 ### Info Section Settings
 - Show/hide info section
 - Enable info cycling
+- Position (above/below progress bar)
 - Separate color schemes
 - Custom messages
 
 ## Updates
 
 The tracker can be updated in real-time using:
-- The "Update Goal Tracker Data" effect
-- The "Update Goal Tracker Local Data" effect
+- The "Advanced Goal Manager" effect
 - API integrations (Extra Life/StreamElements)
 
 ## Requirements
@@ -172,7 +145,6 @@ The tracker can be updated in real-time using:
 1. If the overlay isn't updating:
    - Check your internet connection
    - Verify API credentials
-   - Ensure proper JSON formatting
 
 2. If animations aren't working:
    - Check timing settings
@@ -189,8 +161,7 @@ The tracker can be updated in real-time using:
 For issues or feature requests, please check the following:
 1. Verify your configuration
 2. Check your browser source setup
-3. Review your JSON formatting
-4. Contact the developer with detailed information about your issue
+3. Contact the developer with detailed information about your issue
 
 ## License
 

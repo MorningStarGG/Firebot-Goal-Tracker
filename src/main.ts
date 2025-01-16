@@ -1,20 +1,36 @@
 /**
  * Advanced Goal Tracker Script for Firebot
- * A custom script that implements a configurable goal/donation tracking system with countdown functionality.
+ * 
+ * This script implements a customizable goal/donation tracking system with countdown functionality.
+ * It registers custom effects, HTTP routes, and variables to manage goal tracking overlays in Firebot.
  * 
  * @module AdvancedGoalTracker
  */
-
-import { Firebot } from "@crowbartools/firebot-custom-scripts-types";
-import { goalTrackerEffectType, goalTrackerUpdateEffectType, goalTrackerLocalUpdateEffectType } from "./goal-tracker-overlay";
+import { Firebot, ScriptModules } from "@crowbartools/firebot-custom-scripts-types";
+import { goalTrackerEffectType } from "./effects/goal";
+import { goalTrackerManagerEffectType } from "./effects/goalManager"
 import { initLogger, logger } from "./logger";
 import { Request, Response } from 'express';
 import goalTrackerHtml from './overlay/goal-tracker.html';
 import { HttpServerManager } from "@crowbartools/firebot-custom-scripts-types/types/modules/http-server-manager";
+import { ReplaceVariableManager } from "@crowbartools/firebot-custom-scripts-types/types/modules/replace-variable-manager";
+import { FirebotSettings } from '@crowbartools/firebot-custom-scripts-types/types/settings';
+import { createGoalManager } from './utility/goal-manager';
+import * as goalVariables from "./variables/goal-variables";
 
-/** Parameters interface for script configuration - currently empty but can be extended */
-interface Params {
-}
+/** 
+ * Configuration parameters for the script.
+ */
+interface Params { }
+
+/** HTTP server manager instance for handling overlay routes */
+export let webServer: HttpServerManager;
+/** Firebot settings manager for accessing global configurations */
+export let settings: FirebotSettings;
+/** Script modules provided by Firebot runtime */
+export let modules: ScriptModules;
+/** Variable replacement manager for handling dynamic content */
+export let replaceVariableManager: ReplaceVariableManager;
 
 /**
  * Main script definition that implements the Firebot.CustomScript interface
@@ -51,11 +67,17 @@ const script: Firebot.CustomScript<Params> = {
         // Extract required modules from runRequest
         const { effectManager, resourceTokenManager, httpServer } = runRequest.modules;
 
-        // Register HTTP route for serving the goal tracker overlay
+        settings = runRequest.modules.settings as FirebotSettings;
+
+        /**
+         * Registers HTTP route handlers for the goal tracker overlay.
+         * @param {Request} req - Express request object
+         * @param {Response} res - Express response object
+         */
         httpServer.registerCustomRoute(
-            "goal-tracker", 
-            "goal-tracker.html", 
-            "GET", 
+            "goal-tracker",
+            "goal-tracker.html",
+            "GET",
             (req: Request, res: Response) => {
                 res.setHeader('content-type', 'text/html');
                 res.end(goalTrackerHtml)
@@ -64,24 +86,28 @@ const script: Firebot.CustomScript<Params> = {
 
         // Store HTTP server reference globally
         webServer = httpServer;
+        modules = runRequest.modules;
+        replaceVariableManager = runRequest.modules.replaceVariableManager;
+
+        createGoalManager(modules.path.join(SCRIPTS_DIR, '..', 'db', 'goalTracker.db'), modules);
 
         // Initialize logging
         initLogger(runRequest.modules.logger);
         logger.info("Advanced Goal Tracker Overlay Script is loading...");
         const request = (runRequest.modules as any).request;
-        
+
         // Register custom effects for the goal tracker
         effectManager.registerEffect(
             goalTrackerEffectType(resourceTokenManager)
         );
         effectManager.registerEffect(
-            goalTrackerUpdateEffectType()
+            goalTrackerManagerEffectType()
         );
-        effectManager.registerEffect(
-            goalTrackerLocalUpdateEffectType()
-        );
+
+        //Register Goal Tracker variables
+        Object.values(goalVariables).forEach(variable => {
+            replaceVariableManager.registerReplaceVariable(variable);
+        });
     },
 };
-/** Global reference to the HTTP server instance */
-export let webServer: HttpServerManager;
 export default script;

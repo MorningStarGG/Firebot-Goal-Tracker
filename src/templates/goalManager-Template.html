@@ -1,0 +1,42 @@
+<eos-container header="Donation Information" aria-label="Local Donor Data">
+    <div class="input-group" role="form" aria-label="Donation input form">
+        <firebot-radios
+            options="{ 
+                add: 'Add Donation', 
+                remove: 'Remove Specific Donation', 
+                resetUser: 'Reset User',
+                resetStreamElements: 'Reset All StreamElements Data',
+                resetExtraLife: 'Reset All ExtraLife Data',
+                resetLocalData: 'Reset All Local Data'
+            }"
+            model="effect.operation"
+            inline="true"
+            style="padding-bottom: 5px;"
+            aria-label="Donation Operation Selection">
+        </firebot-radios>
+        <div class="row" style="margin-bottom: 10px;" ng-if="effect.operation === 'add' || effect.operation === 'remove' || effect.operation === 'resetUser'">
+            <div class="col-md-6">
+                <firebot-input
+                    input-title="Name"
+                    model="effect.donorName"
+                    placeholder="Enter donor name"
+                    aria-label="Donor name input"
+                    aria-required="true">
+                </firebot-input>
+            </div>
+            <div class="col-md-6" ng-if="effect.operation === 'add' || effect.operation === 'remove'">
+                <firebot-input
+                    input-title="Amount"
+                    model="effect.donationAmount"
+                    placeholder="Enter donation amount"
+                    aria-label="Donation amount input"
+                    aria-required="true">
+                </firebot-input>
+            </div>
+        </div>
+        <div class="alert alert-warning" ng-if="effect.operation === 'resetStreamElements' || effect.operation === 'resetExtraLife' || effect.operation === 'resetLocalData'">
+            Warning: This will reset all {{effect.operation === 'resetStreamElements' ? 'StreamElements' : 
+                     effect.operation === 'resetExtraLife' ? 'ExtraLife' : 'Local'}} donation data. This action cannot be undone.
+        </div>
+    </div>
+</eos-container>
