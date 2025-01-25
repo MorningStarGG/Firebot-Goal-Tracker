@@ -129,7 +129,7 @@ The tracker can be updated in real-time using:
 
 1. Clone the repository:
    ```
-   git clone https://github.com/your-repo/firebot-advanced-goal-tracker.git
+   git clone https://github.com/MorningStarGG/Firebot-Goal-Tracker.git
    ```
 2. Install dependencies:
    ```
