@@ -2,17 +2,17 @@
   "name": "firebot-advanced-goal-tracker",
   "displayName": "Advanced Goal Tracker",
   "description": "Highly customizable Goal/Donation Tracking with Countdown",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "author": "MorningStarGG",
   "publisher": "MorningStarGG",
   "homepage": "https://twitch.tv/MorningStarGG",
   "license": "GPL-3.0-only",
   "repository": {
     "type": "git",
-    "url": "github:MorningStarGG/firebot-advanced-goal-tracker"
+    "url": "github:MorningStarGG/firebot-goal-tracker"
   },
   "bugs": {
-    "url": "https://github.com/MorningStarGG/firebot-advanced-goal-tracker/issues"
+    "url": "https://github.com/MorningStarGG/firebot-goal-tracker/issues"
   },
   "main": "dist/MSGG-GoalTracker.js",
   "scripts": {
