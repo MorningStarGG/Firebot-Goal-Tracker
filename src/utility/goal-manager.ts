@@ -218,20 +218,19 @@ class GoalManager {
         });
 
         // Compare with period summaries and adjust if needed
-        const periodKey = summaryType === 'weekly' ? 'week' : 'month';
-        const cheerSummary = seData.data[`cheer-${periodKey}`]?.amount * bitsValue || 0;
-        const subscriberSummary = seData.data[`subscriber-${periodKey}`]?.count * subValues.tier1 || 0;
-        const tipSummary = seData.data[`tip-${periodKey}`]?.amount || 0;
+        const cheerGoal = seData.data['cheer-goal']?.amount * bitsValue || 0;
+        const subscriberGoal = seData.data['subscriber-goal']?.amount * subValues.tier1 || 0;
+        const tipGoal = seData.data['tip-goal']?.amount || 0;
 
         // Add any missing amounts from summaries
-        if (cheerSummary > cheerTotal) {
-            seResult.overall_total.amount += cheerSummary - cheerTotal;
+        if (cheerGoal > cheerTotal) {
+            seResult.overall_total.amount += cheerGoal - cheerTotal;
         }
-        if (subscriberSummary > subscriberTotal) {
-            seResult.overall_total.amount += subscriberSummary - subscriberTotal;
+        if (subscriberGoal > subscriberTotal) {
+            seResult.overall_total.amount += subscriberGoal - subscriberTotal;
         }
-        if (tipSummary > tipTotal) {
-            seResult.overall_total.amount += tipSummary - tipTotal;
+        if (tipGoal > tipTotal) {
+            seResult.overall_total.amount += tipGoal - tipTotal;
         }
 
         // Sort donations by timestamp and amount
@@ -290,23 +289,77 @@ class GoalManager {
     }
 
     /**
-     * Checks if a given date falls within the specified time period
-     * @param dateStr - ISO date string to check
-     * @param period - Time period to check against ('daily', 'weekly', or 'monthly')
-     * @param currentMonth - Current month (0-11) for monthly period checks
-     * @param currentYear - Current year for monthly period checks
-     * @returns boolean indicating if date is within the specified period
+     * Checks and resets StreamElements goal values if needed based on timing conditions.
+     * Goals are reset at the start of each week (for weekly summaries) or month (for monthly summaries).
+     * The function will reset all goal values (tips, cheers, subscribers, followers) to 0 using the StreamElements API.
+     * 
+     * @param channelId - The StreamElements channel ID to reset goals for
+     * @param jwtToken - JWT authentication token for StreamElements API
+     * @param summaryType - Determines reset timing: 'weekly' resets on Sundays, 'monthly' resets on the 1st
+     * 
+     * @remarks
+     * - For weekly summaries, resets occur at the start of Sunday (UTC)
+     * - For monthly summaries, resets occur at the start of the 1st day of each month (UTC)
+     * - The function checks the last reset time to prevent multiple resets on the same day
+     * - The reset time is stored in the database at '/goal/streamElements/lastGoalReset'
      */
-    private isInPeriod(dateStr: string, period: 'daily' | 'weekly' | 'monthly', currentMonth: number, currentYear: number): boolean {
-        switch (period) {
-            case 'daily':
-                return this.isCurrentDay(dateStr);
-            case 'weekly':
-                return this.isCurrentWeek(dateStr);
-            case 'monthly':
-                return this.isCurrentMonth(dateStr, currentMonth, currentYear);
-            default:
-                return false;
+    private async resetGoalValuesIfNeeded(channelId: string, jwtToken: string, summaryType: 'weekly' | 'monthly') {
+        try {
+            // Get current time in UTC
+            const now = new Date();
+            const lastResetKey = `/goal/streamElements/lastGoalReset`;
+
+            // Check if we need to reset based on summary type
+            let shouldReset = false;
+            try {
+                const lastReset = new Date(await this._db.getData(lastResetKey));
+
+                if (summaryType === 'weekly') {
+                    // Check if it's a new week (Sunday) and we haven't reset yet today
+                    shouldReset = now.getDay() === 0 && 
+                        lastReset.getDate() !== now.getDate(); 
+                } else {
+                    // Check if it's the first of the month and we haven't reset yet today
+                    shouldReset = now.getDate() === 1 && 
+                        lastReset.getDate() !== now.getDate();
+                }
+            } catch {
+                // No last reset found, we should do a reset
+                shouldReset = true;
+            }
+
+            if (shouldReset) {
+                // Reset the goals via StreamElements API
+                const response = await fetch(
+                    `https://api.streamelements.com/kappa/v2/sessions/${channelId}`,
+                    {
+                        method: 'PUT',
+                        headers: {
+                            'Accept': 'application/json',
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${jwtToken}`
+                        },
+                        body: JSON.stringify({
+                            // Reset just the goal values
+                            'tip-goal': { amount: 0 },
+                            'cheer-goal': { amount: 0 },
+                            'subscriber-goal': { amount: 0 },
+                            'follower-goal': { amount: 0 }
+                        })
+                    }
+                );
+
+                if (!response.ok) {
+                    throw new Error(`Failed to reset goals: ${response.status} ${response.statusText}`);
+                }
+
+                // Save the reset time
+                await this._db.push(lastResetKey, new Date().toISOString());
+                logger.info('Successfully reset StreamElements goals');
+            }
+        } catch (error) {
+            logger.error('Error resetting StreamElements goals:', error);
+            throw error;
         }
     }
 
@@ -637,6 +690,7 @@ class GoalManager {
             if (data.streamElements) {
                 currentState.streamElements = {
                     lastUpdated: data.streamElements.lastUpdated,
+                    lastGoalReset: data.streamElements.lastGoalReset,
                     data: data.streamElements.data
                 };
             }
@@ -742,6 +796,7 @@ class GoalManager {
             if (!goalState) return false;
 
             const currentData = goalState[source]?.data;
+            const lastGoalReset = goalState[source]?.lastGoalReset;  // Preserve this value
 
             // Skip update if data hasn't changed
             if (currentData && this.isEqual(currentData, newData)) {
@@ -751,6 +806,7 @@ class GoalManager {
 
             goalState[source] = {
                 lastUpdated: new Date().toISOString(),
+                lastGoalReset: lastGoalReset,  // Keep the lastGoalReset
                 data: newData
             };
 
@@ -771,8 +827,17 @@ class GoalManager {
      */
     async pollStreamElements(channelId: string, jwtToken: string, useLocalDonations: boolean = false) {
         try {
-            const previousData = await this.getStreamElementsData();
             const goalState = await this.getGoalData();
+            if (!goalState) return null;
+
+            // Check and reset goals if needed
+            await this.resetGoalValuesIfNeeded(
+                channelId,
+                jwtToken,
+                goalState?.config?.streamElements?.summaryType || 'monthly'
+            );
+
+            const previousData = await this.getStreamElementsData();
             const config = goalState.config.streamElements;
 
             // Fetch current data from StreamElements API
