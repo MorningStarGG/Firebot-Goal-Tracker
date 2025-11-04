@@ -71,6 +71,14 @@ export function goalTrackerEffectType(
             };
 
             /** 
+             * Changes the milestone cycle mode
+             */
+            $scope.milestoneCycleModes = {
+                "next": "Next Milestone",
+                "all": "All Milestones"
+            };
+
+            /** 
              * Adds a new milestone to the tracker configuration
              * Initializes with empty title and zero amount
              */
@@ -118,10 +126,10 @@ export function goalTrackerEffectType(
                 }
             };
 
-             /**
-             * Sets the info section position and updates the corresponding value
-             * Handles position validation and error logging
-             */
+            /**
+            * Sets the info section position and updates the corresponding value
+            * Handles position validation and error logging
+            */
             $scope.setInfoPosition = function () {
                 const selectedIndex = $scope.infoPositions.findIndex((label: string) => {
                     return label === $scope.effect.display.infoSection.infoPosition;
@@ -198,6 +206,8 @@ export function goalTrackerEffectType(
                 $scope.effect.showDonationTimestamp = false;
                 $scope.effect.progressBarOpacity = 1;
                 $scope.effect.useMilestonesAsGoals = false;
+                $scope.effect.milestoneCycle = false;
+                $scope.effect.milestoneCycleMode = 'next';
                 $scope.effect.useCustomRecentMessage = false;
                 $scope.effect.useCustomLargestMessage = false;
                 $scope.effect.showInfoSection = true;
@@ -601,6 +611,8 @@ export function goalTrackerEffectType(
                     donationGoal: event.effect.donationGoal,
                     mode: {
                         useMilestonesAsGoals: event.effect.useMilestonesAsGoals,
+                        milestoneCycle: event.effect.milestoneCycle,
+                        milestoneCycleMode: event.effect.milestoneCycleMode,
                         infoSectionCycle: event.effect.infoSectionCycle,
                         showInfoSection: event.effect.showInfoSection,
                         separateInfoColors: event.effect.separateInfoColors,

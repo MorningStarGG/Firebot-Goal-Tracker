@@ -771,6 +771,40 @@
         function handleIncomingData(data) {
             if (CONFIG.display.progressBar.hideBeforeStreamStartTime && !hasStreamStarted()) return;
 
+            // STORE TOTALS FOR MILESTONE CYCLING
+            if (CONFIG.extraLife.useExtraLife) {
+                State.currentDonationTotal = data.sumDonations || 0;
+                State.extraLifeGoal = data.fundraisingGoal || CONFIG.donationGoal;
+            } else {
+                const donationData = data?.overall_total;
+                if (donationData) {
+                    if (CONFIG.streamElements.useStreamElements) {
+                        State.streamElementsTotal = Number(donationData.amount);
+                    } else {
+                        State.localTotal = Number(donationData.amount);
+                    }
+                }
+            }
+
+            // SKIP PROGRESS BAR IF CYCLING ENABLED 
+            if (CONFIG.mode.milestoneCycle && CONFIG.content.milestones && CONFIG.content.milestones.length > 0) {
+                // Still update donor info, but skip progress bar updates
+                if (CONFIG.extraLife.useExtraLife) {
+                    State.donations = data.donations || [];
+                    updateDonorInfo(State.donations);
+                    if (data.newDonations?.length > 0) {
+                        data.newDonations.forEach(donation => {
+                            showNewDonation(donation);
+                        });
+                    }
+                } else if (data?.donations?.length > 0) {
+                    State.donations = data.donations;
+                    updateRecentDonationDisplay(data.donations[0]);
+                    updateLargestDonationDisplay();
+                }
+                return;
+            }
+
             if (CONFIG.extraLife.useExtraLife) {
                 return Promise.resolve().then(() => {
                     // Extract the current data
@@ -925,6 +959,11 @@
             donations: [],
             total: 0,
             donorIndex: 0,
+            milestoneIndex: -1,
+            currentDonationTotal: 0,
+            extraLifeGoal: 0,
+            streamElementsTotal: 0,
+            localTotal: 0,
             largestDonation: {
                 amount: 0,
                 displayName: CONFIG.content.templates[
@@ -1100,6 +1139,9 @@
             setTimeout(() => {
                 widget.classList.add('initialized');
                 toggleDisplay();
+                if (CONFIG.mode.milestoneCycle) {
+                    initializeMilestoneCycle();
+                }
             }, 100);
         }
 
@@ -1751,6 +1793,146 @@
 
                 const lastMilestone = CONFIG.content.milestones[CONFIG.content.milestones.length - 1];
                 milestoneLabel.innerText = lastMilestone.title;
+            }
+        }
+
+        /**
+         * Initializes milestone cycling if enabled
+         * @function
+         * @description Sets up rotation between main goal and milestones
+         * Supports two modes: 'all' (all milestones) or 'next' (next milestone only)
+         */
+        function initializeMilestoneCycle() {
+            if (!CONFIG.mode.milestoneCycle || !CONFIG.content.milestones || CONFIG.content.milestones.length === 0) {
+                return;
+            }
+
+            let milestoneTimer = null;
+            const cycleMode = CONFIG.mode.milestoneCycleMode || 'next';
+
+            function rotateMilestone() {
+                // Get current donation amount
+                let currentTotal = 0;
+                if (CONFIG.extraLife.useExtraLife) {
+                    currentTotal = State.currentDonationTotal || 0;
+                } else if (CONFIG.streamElements.useStreamElements) {
+                    currentTotal = State.streamElementsTotal || 0;
+                } else {
+                    currentTotal = State.localTotal || 0;
+                }
+
+                if (cycleMode === 'next') {
+                    // NEXT MILESTONE ONLY MODE: Toggle between main goal and next milestone
+
+                    // Find the next uncompleted milestone
+                    const nextMilestone = CONFIG.content.milestones.find(m => currentTotal < m.amount);
+
+                    if (!nextMilestone) {
+                        // All milestones completed - just show main goal
+                        updateCycledGoalDisplay(-1, currentTotal);
+                        return;
+                    }
+
+                    // Find the index of the next milestone
+                    const nextMilestoneIndex = CONFIG.content.milestones.indexOf(nextMilestone);
+
+                    // Toggle between -1 (main goal) and the next milestone index
+                    if (State.milestoneIndex === -1) {
+                        State.milestoneIndex = nextMilestoneIndex;
+                    } else {
+                        State.milestoneIndex = -1;
+                    }
+
+                    updateCycledGoalDisplay(State.milestoneIndex, currentTotal);
+
+                } else {
+                    // ALL MILESTONES MODE: Cycle through all milestones + main goal
+                    const totalStops = CONFIG.content.milestones.length + 1; // +1 for main goal
+                    State.milestoneIndex = (State.milestoneIndex + 1) % totalStops;
+
+                    // Adjust to start at -1 (main goal)
+                    const adjustedIndex = State.milestoneIndex - 1;
+
+                    updateCycledGoalDisplay(adjustedIndex, currentTotal);
+                }
+            }
+
+            // Initial display
+            rotateMilestone();
+
+            // Set up interval
+            const interval = toMS(CONFIG.timing.cycleDelay);
+            milestoneTimer = setInterval(rotateMilestone, interval);
+        }
+
+        /**
+         * Updates goal display during milestone cycle
+         * @function
+         * @param {number} milestoneIndex - Index of milestone to display (-1 for main goal)
+         * @param {number} currentTotal - Current donation amount
+         * @description Shows either main goal or specific milestone based on cycle position
+         */
+        function updateCycledGoalDisplay(milestoneIndex, currentTotal) {
+            const donationStatus = document.getElementById('donationStatus');
+            const milestoneLabel = document.getElementById('milestoneLabel');
+            const progressBar = document.getElementById('progressBar');
+            const currencySymbol = CONFIG.content.templates[CONFIG.extraLife.useExtraLife ? 'extraLife' : 'default'].donations.currencySymbol || '$';
+
+            let currentGoal;
+            let milestoneText = '';
+
+            if (milestoneIndex === -1) {
+                // Show main goal
+                if (CONFIG.extraLife.useExtraLife) {
+                    currentGoal = State.extraLifeGoal || CONFIG.donationGoal;
+                } else {
+                    currentGoal = CONFIG.donationGoal;
+                }
+                milestoneText = ''; // Clear milestone text when showing main goal
+            } else {
+                // Show specific milestone
+                const milestone = CONFIG.content.milestones[milestoneIndex];
+                if (milestone) {
+                    currentGoal = milestone.amount;
+
+                    // Display milestone title
+                    if (CONFIG.mode.useMilestonesAsGoals) {
+                        milestoneText = milestone.title;
+                    } else {
+                        milestoneText = `${milestone.title}: ${currencySymbol}${milestone.amount}`;
+                    }
+                } else {
+                    // Fallback if milestone doesn't exist
+                    currentGoal = CONFIG.donationGoal;
+                }
+            }
+
+            // Calculate percentage
+            const percentage = Math.min((currentTotal / currentGoal) * 100, 100);
+
+            // Update progress bar
+            progressBar.style.width = `${percentage}%`;
+
+            // Format numbers
+            const formatNumber = (num) => {
+                try {
+                    const parsedNum = Number(num);
+                    return Number.isInteger(parsedNum) ? parsedNum.toString() : parsedNum.toFixed(2);
+                } catch (error) {
+                    return '0';
+                }
+            };
+
+            // Update donation status
+            donationStatus.innerText = `${currencySymbol}${formatNumber(currentTotal)}/${currencySymbol}${formatNumber(currentGoal)}`;
+
+            // Update milestone label
+            if (milestoneText) {
+                milestoneLabel.innerText = milestoneText;
+            } else if (CONFIG.display.progressBar.showPercentage) {
+                milestoneLabel.innerText = `${Math.floor(percentage)}%`;
+            } else {
+                milestoneLabel.innerText = '';
             }
         }
 

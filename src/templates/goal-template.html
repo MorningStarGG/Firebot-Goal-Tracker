@@ -197,10 +197,30 @@
                 Use Milestones as Goals
                 <div class="control__indicator"></div>
             </label>
+            <label class="control-fb control--checkbox" ng-if="effect.milestones && effect.milestones.length > 0">
+                <input type="checkbox" ng-model="effect.milestoneCycle" aria-label="Enable milestone cycling">
+                Enable Milestone Cycle
+                <div class="control__indicator"></div>
+            </label>
         </div>
+
         <div class="input-group" style="margin-bottom: 10px;">
-            <color-picker-input model="effect.templates.colors.milestoneColor" label="Milestone Text Color"
-                aria-label="Select milestone text color"></color-picker-input>
+            <div class="row">
+                <div class="col-md-6">
+                    <color-picker-input model="effect.templates.colors.milestoneColor" label="Milestone Text"
+                        aria-label="Select milestone text color"></color-picker-input>
+                </div>
+                <div class="col-md-6">
+                    <div class="input-group">
+                        <span class="input-group-addon">Cycle Mode</span>
+                        <select class="form-control" ng-model="effect.milestoneCycleMode"
+                            aria-label="Select milestone cycle mode">
+                            <option value="next">Next Milestone</option>
+                            <option value="all">All Milestones</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
         </div>
         <div class="input-group">
             <div ng-repeat="milestone in effect.milestones track by $index">
