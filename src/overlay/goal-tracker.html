@@ -1820,6 +1820,7 @@
                 } else {
                     currentTotal = State.localTotal || 0;
                 }
+                const showCompletedMilestones = CONFIG.mode.showCompletedMilestones !== false;
 
                 if (cycleMode === 'next') {
                     // NEXT MILESTONE ONLY MODE: Toggle between main goal and next milestone
@@ -1846,14 +1847,36 @@
                     updateCycledGoalDisplay(State.milestoneIndex, currentTotal);
 
                 } else {
-                    // ALL MILESTONES MODE: Cycle through all milestones + main goal
-                    const totalStops = CONFIG.content.milestones.length + 1; // +1 for main goal
+                    // ALL MILESTONES MODE: Cycle through available milestones + main goal
+                    const milestoneEntries = CONFIG.content.milestones
+                        .map((milestone, index) => ({ milestone, index }))
+                        .filter(({ milestone }) => {
+                            if (showCompletedMilestones) {
+                                return true;
+                            }
+                            const milestoneAmount = Number(milestone.amount);
+                            return Number.isNaN(milestoneAmount) || currentTotal < milestoneAmount;
+                        });
+
+                    if (milestoneEntries.length === 0) {
+                        State.milestoneIndex = -1;
+                        updateCycledGoalDisplay(-1, currentTotal);
+                        return;
+                    }
+
+                    const totalStops = milestoneEntries.length + 1; // +1 for main goal
                     State.milestoneIndex = (State.milestoneIndex + 1) % totalStops;
 
                     // Adjust to start at -1 (main goal)
                     const adjustedIndex = State.milestoneIndex - 1;
 
-                    updateCycledGoalDisplay(adjustedIndex, currentTotal);
+                    if (adjustedIndex === -1) {
+                        updateCycledGoalDisplay(-1, currentTotal);
+                        return;
+                    }
+
+                    const nextIndex = milestoneEntries[adjustedIndex]?.index ?? -1;
+                    updateCycledGoalDisplay(nextIndex, currentTotal);
                 }
             }
 

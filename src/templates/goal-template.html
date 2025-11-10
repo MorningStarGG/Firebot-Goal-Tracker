@@ -202,6 +202,13 @@
                 Enable Milestone Cycle
                 <div class="control__indicator"></div>
             </label>
+            <label class="control-fb control--checkbox"
+                ng-if="effect.milestones && effect.milestones.length > 0 && effect.milestoneCycle">
+                <input type="checkbox" ng-model="effect.showCompletedMilestones"
+                    aria-label="Toggle showing completed milestones once they are met">
+                Show Completed Milestones
+                <div class="control__indicator"></div>
+            </label>
         </div>
 
         <div class="input-group" style="margin-bottom: 10px;">

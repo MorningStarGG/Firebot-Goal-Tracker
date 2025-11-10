@@ -164,6 +164,7 @@ export interface FeatureFlags {
   useMilestonesAsGoals: boolean;
   milestoneCycle: boolean;
   milestoneCycleMode: 'all' | 'next';
+  showCompletedMilestones: boolean;
   infoSectionCycle: boolean;
   showInfoSection: boolean;
   separateInfoColors: boolean;

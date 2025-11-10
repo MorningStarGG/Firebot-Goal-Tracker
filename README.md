@@ -6,7 +6,7 @@ A highly customizable goal and donation tracking system with countdown functiona
 
 ### Core Features
 - Real-time donation tracking
-- Multiple data sources (StreamElements, Extra Life, custom)
+- Multiple data sources (StreamElements, Extra Life, local)
 - Customizable overlay display
 - Countdown timer with multiple modes
 - Milestone tracking
@@ -94,6 +94,8 @@ A highly customizable goal and donation tracking system with countdown functiona
 - Custom milestone goals
 - Milestone text
 - Use milestones as goals option
+- Cycle between milestones (next or all)
+- Option to hide completed milestones while cycling
 
 ### Info Section Settings
 - Show/hide info section

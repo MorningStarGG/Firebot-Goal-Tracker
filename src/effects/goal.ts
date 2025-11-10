@@ -208,6 +208,7 @@ export function goalTrackerEffectType(
                 $scope.effect.useMilestonesAsGoals = false;
                 $scope.effect.milestoneCycle = false;
                 $scope.effect.milestoneCycleMode = 'next';
+                $scope.effect.showCompletedMilestones = true;
                 $scope.effect.useCustomRecentMessage = false;
                 $scope.effect.useCustomLargestMessage = false;
                 $scope.effect.showInfoSection = true;
@@ -342,6 +343,10 @@ export function goalTrackerEffectType(
 
                 $scope.effect.startTime = createTimeDate(savedStart.getHours(), savedStart.getMinutes());
                 $scope.effect.endTime = createTimeDate(savedEnd.getHours(), savedEnd.getMinutes());
+            }
+
+            if ($scope.effect.showCompletedMilestones === undefined) {
+                $scope.effect.showCompletedMilestones = true;
             }
         },
         /**
@@ -613,6 +618,7 @@ export function goalTrackerEffectType(
                         useMilestonesAsGoals: event.effect.useMilestonesAsGoals,
                         milestoneCycle: event.effect.milestoneCycle,
                         milestoneCycleMode: event.effect.milestoneCycleMode,
+                        showCompletedMilestones: event.effect.showCompletedMilestones,
                         infoSectionCycle: event.effect.infoSectionCycle,
                         showInfoSection: event.effect.showInfoSection,
                         separateInfoColors: event.effect.separateInfoColors,
