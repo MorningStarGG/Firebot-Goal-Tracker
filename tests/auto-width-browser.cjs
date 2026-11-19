@@ -8,13 +8,26 @@ module.exports = async function verifyAutoWidth({ tracker, effect, latest, evalu
     const snapshot = () => evaluate(`(()=>{const r=document.getElementById('goal-tracker').getBoundingClientRect();const l=document.getElementById('milestoneLabel'),a=document.getElementById('donationStatus');return {left:r.left,right:r.right,top:r.top,bottom:r.bottom,width:r.width,height:r.height,labelRight:l.getBoundingClientRect().right,amountLeft:a.getBoundingClientRect().left,font:parseFloat(getComputedStyle(l).fontSize)}})()`, context);
     const paint = text => evaluate(`paintGoal(100,25,${JSON.stringify(text)})`, context);
     const settle = async text => { await paint(text); await evaluate(`new Promise(resolve=>setTimeout(resolve,450))`, context); return snapshot(); };
-    const render = async (settings = {}) => {
+    // Generate text that actually overflows the minimum-width label in the active browser font.
+    // A fixed English phrase can fit on Linux while requiring growth with Windows' fallback fonts.
+    const overflowingLabel = (extraWidth = 80, prefix = 'Extended Community Goal') => evaluate(`(()=>{
+        const label=document.getElementById('milestoneLabel'),style=getComputedStyle(label),sample=document.createElement('span');
+        Object.assign(sample.style,{position:'absolute',visibility:'hidden',whiteSpace:'pre',font:style.font,letterSpacing:style.letterSpacing});
+        document.body.appendChild(sample);
+        try {
+            const required=label.clientWidth+${extraWidth};let text=${JSON.stringify(prefix)};
+            for(let i=0;i<100;i++){sample.textContent=text;if(sample.getBoundingClientRect().width>=required)return text;text+=' Support';}
+            throw Error('Could not prepare overflowing milestone text');
+        } finally { sample.remove(); }
+    })()`, context);
+    const render = async (settings = {}, fontFamily) => {
         Object.assign(sized, { autoWidgetWidth: true, widgetWidth: 700, widgetScale: 125, position: 'Top Middle', overlayGaps: { top: 60, bottom: 40, left: 30, right: 50 }, customCoords: { top: null, bottom: null, left: null, right: null } }, settings);
         assert.equal((await tracker.onTriggerEvent({ effect: sized })).success, true);
         await evaluate(`window.applyGoal(${JSON.stringify(latest('elastic'))})`);
         const previous = context;
         context = await until(async () => { const next = await goalContext('elastic'); return next && next !== previous ? next : null; }, 'automatic-width context');
         await until(() => evaluate(`document.getElementById('donationStatus').textContent==='$0/$100'`, context), 'automatic-width data');
+        if (fontFamily) await evaluate(`(()=>{const style=document.createElement('style');style.textContent=${JSON.stringify(`*{font-family:${fontFamily}!important}`)};document.head.appendChild(style);window.dispatchEvent(new Event('resize'));})()`, context);
         return settle('A');
     };
     const animate = async (text, repeat = false) => evaluate(`new Promise(resolve=>{
@@ -27,10 +40,11 @@ module.exports = async function verifyAutoWidth({ tracker, effect, latest, evalu
     for (const position of ['Top Left', 'Top Middle', 'Top Right', 'Middle Left', 'Middle', 'Middle Right', 'Bottom Left', 'Bottom Middle', 'Bottom Right']) {
         const short = await render({ position });
         close(short.width, 475 * 1.25, 'automatic width returns to the original default width at the selected scale');
-        const frames = await animate('Extended Community Goal');
+        const frames = await animate(await overflowingLabel());
         const last = frames.at(-1);
         assert.equal(new Set(frames.map(frame => frame.font)).size, 1, 'incoming text must keep its final font size from the synchronous update through the whole growth animation');
-        assert(last.width > short.width + 20 && last.width <= 875, 'automatic width must grow within the configured maximum');
+        const maximum = sized.widgetWidth * sized.widgetScale / 100;
+        assert(last.width > short.width + 20 && last.width <= maximum + 1.1, `automatic width must grow within the configured maximum: ${JSON.stringify({position,shortWidth:short.width,longWidth:last.width,maximum,font:last.font})}`);
         assert(frames.some(frame => frame.width > short.width + 5 && frame.width < last.width - 5), 'growth must include intermediate animation frames');
         for (const frame of frames) {
             const anchorX = position.includes('Left') ? frame.left : position.includes('Right') ? frame.right : (frame.left + frame.right) / 2;
@@ -45,7 +59,7 @@ module.exports = async function verifyAutoWidth({ tracker, effect, latest, evalu
     }
 
     await render({ widgetScale: 100 });
-    const userCase = await animate('Community Goal: Double Donation Weekend');
+    const userCase = await animate(await overflowingLabel(700 - 475 + 80, 'Community Goal: Double Donation Weekend'));
     close(userCase.at(-1).width, 700, '700px / 100% regression reaches the maximum');
     assert(userCase.at(-1).font >= 16 && userCase.at(-1).font < 24, 'long text needs fitting at the destination width');
     assert.equal(new Set(userCase.map(frame => frame.font)).size, 1, '700px / 100% must not flash a larger font or step through intermediate sizes');
@@ -54,8 +68,23 @@ module.exports = async function verifyAutoWidth({ tracker, effect, latest, evalu
     assert(userShrink.every(frame => frame.font === 24), 'shorter text restores its preferred font before shrinking, without a first-frame flash');
     close(userShrink.at(-1).width, 475, '700px / 100% regression returns to its minimum');
 
+    // Exercise different system-font metrics without changing the production font stack.
+    for (const fontFamily of ['Arial, sans-serif', 'monospace']) {
+        const short = await render({ widgetScale: 100 }, fontFamily);
+        const frames = await animate(await overflowingLabel());
+        assert(frames.at(-1).width > short.width + 20 && frames.at(-1).width <= sized.widgetWidth + 1.1, `${fontFamily}: automatic width grows within its maximum`);
+        assert(frames.some(frame => frame.width > short.width + 5 && frame.width < frames.at(-1).width - 5), `${fontFamily}: growth remains animated`);
+        assert.equal(new Set(frames.map(frame => frame.font)).size, 1, `${fontFamily}: no text-size flash during growth`);
+        await settle('A');
+        const capped = await animate(await overflowingLabel(700 - 475 + 80, 'Community Goal: Double Donation Weekend'));
+        close(capped.at(-1).width, 700, `${fontFamily}: overflowing text reaches the configured maximum`);
+        assert(capped.at(-1).font >= 16 && capped.at(-1).font < 24, `${fontFamily}: maximum-width text is fitted`);
+        assert.equal(new Set(capped.map(frame => frame.font)).size, 1, `${fontFamily}: fitted font stays steady`);
+        close((await settle('A')).width, 475, `${fontFamily}: shorter text restores the minimum`);
+    }
+
     await render({ position: 'Top Middle', overlayGaps: { top: 60, bottom: 0, left: 0, right: 0 } });
-    const repeated = await animate('Extended Community Goal', true);
+    const repeated = await animate(await overflowingLabel(), true);
     for (const frame of repeated) close((frame.left + frame.right) / 2, 500, 'top middle stays at screen center');
     close(repeated.find(frame => frame.time >= 450).width, repeated.at(-1).width, 'repeated updates must not restart or oscillate the animation');
     const capped = await settle('ExtremelyLongMilestoneWithoutSpaces'.repeat(8));
@@ -116,7 +145,7 @@ module.exports = async function verifyAutoWidth({ tracker, effect, latest, evalu
     sized.display.countdown.showCountdown = false;
 
     await render({ position: 'Custom', customCoords: { top: 35, left: 40 }, overlayGaps: { top: 100, bottom: 100, left: 100, right: 100 } });
-    const customFrames = await animate('Extended Community Goal');
+    const customFrames = await animate(await overflowingLabel());
     for (const frame of customFrames) { close(frame.left, 40, 'custom left ignores preset gaps'); close(frame.top, 35, 'custom top ignores preset gaps'); }
 
     sized.display.fixedSectionWidths = true;
@@ -135,5 +164,5 @@ module.exports = async function verifyAutoWidth({ tracker, effect, latest, evalu
     await until(async () => Math.abs((await snapshot()).width - 875) < 1, 'automatic widget restores scale after resize');
     close((await fixedInfo()).width, (475 - 40) * 1.25, 'fixed info restores its requested scale after viewport recovery');
     await evaluate(`window.applyGoal({type:'remove',goalId:'goal_elastic',revision:${latest('elastic').revision + 1}})`);
-    console.log('Automatic width passed: measured growth/shrink, all preset anchors during animation, fixed pixel gaps, max width/ellipsis, update stability, custom coordinates, reduced motion and inset viewport fitting.');
+    console.log('Automatic width passed: font-aware growth/shrink including Arial and monospace fallbacks, all preset anchors during animation, fixed pixel gaps, max width/ellipsis, update stability, custom coordinates, reduced motion and inset viewport fitting.');
 };
