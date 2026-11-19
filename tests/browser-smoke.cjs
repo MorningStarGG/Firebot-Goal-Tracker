@@ -4,7 +4,7 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const http = require('http');
-const { spawn } = require('child_process');
+const { launchBrowser, stopBrowser } = require('./browser-debugger.cjs');
 const WebSocket = require('ws');
 const rendererSettings = require('./renderer-settings-browser.cjs');
 
@@ -82,15 +82,12 @@ async function run() {
         });
         await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
         const address = `http://127.0.0.1:${server.address().port}`;
-        browser = spawn(executable, ['--headless=new', '--disable-gpu', '--no-first-run', '--no-default-browser-check',
+        const launched = await launchBrowser(executable, ['--headless=new', '--disable-gpu', '--no-first-run', '--no-default-browser-check',
             ...(process.env.CI ? ['--no-sandbox', '--disable-dev-shm-usage'] : []),
             '--disable-background-networking', '--remote-debugging-port=0', '--remote-debugging-address=127.0.0.1',
-            `--user-data-dir=${profile}`, '--window-size=1000,800', 'about:blank'], { windowsHide: true, stdio: 'ignore' });
-        const portFile = path.join(profile, 'DevToolsActivePort');
-        await until(() => fs.existsSync(portFile), 'browser debugger');
-        const port = fs.readFileSync(portFile, 'utf8').split('\n')[0];
-        const pages = await (await fetch(`http://127.0.0.1:${port}/json/list`)).json();
-        socket = new WebSocket(pages.find(page => page.type === 'page').webSocketDebuggerUrl);
+            `--user-data-dir=${profile}`, '--window-size=1000,800', 'about:blank'], profile);
+        browser = launched.browser;
+        socket = new WebSocket(launched.page.webSocketDebuggerUrl);
         await new Promise((resolve, reject) => { socket.once('open', resolve); socket.once('error', reject); });
         let sequence = 0; const pending = new Map(), contexts = new Map();
         socket.on('message', raw => {
@@ -301,10 +298,7 @@ async function run() {
         await host?.unload();
         socket?.close();
         if (server) { server.closeAllConnections?.(); await new Promise(resolve => server.close(resolve)); }
-        if (browser && browser.exitCode == null) {
-            browser.kill();
-            await Promise.race([new Promise(resolve => browser.once('exit', resolve)), delay(3000)]);
-        }
+        if (browser) await stopBrowser(browser);
         // Delete only the isolated profile created above, after checking its resolved parent and prefix.
         const resolved = path.resolve(profile), tempRoot = path.resolve(os.tmpdir());
         if (path.dirname(resolved) === tempRoot && path.basename(resolved).startsWith('firebot-goals-browser-')) {

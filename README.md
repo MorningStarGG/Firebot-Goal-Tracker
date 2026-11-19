@@ -223,6 +223,8 @@ npm run test:browser
 
 Browser tests use the production bundle and an installed Chromium-based browser (or `CHROME_PATH`). They check display behavior, settings, and several upgrade and regression cases. API tests use mocks and migration tests use temporary profiles, they do not reset a live StreamElements account. **Check both default/named overlays and test any account-reset feature in a controlled live Firebot setup before relying on it during a stream.**
 
+The browser launcher allows up to 30 seconds for startup and waits for a usable page debugger. It accepts Chrome's debugger announcement or `DevToolsActivePort`, retries endpoint initialization, and reports launch errors, exit status, the selected executable, and recent browser output if startup fails. Failed launches are terminated before the temporary profile is removed.
+
 ### Preparing a community release
 
 After building and testing:

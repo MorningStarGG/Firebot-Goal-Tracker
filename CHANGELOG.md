@@ -130,10 +130,11 @@ A major update adding support for multiple independent goals, scheduled StreamEl
 
 ### Documentation and verification
 
+- Replaced the browser smoke test's silent 10-second port-file wait with process-aware startup and a 30-second deadline. Wait for a usable debugger page, handle stderr announcements/partial port files/delayed endpoints, and retain browser output and process status on failures. Added startup/error/cleanup regression coverage.
 - Expanded the README with multi-goal setup, Goal ID normalization, activation behavior, replace-variable examples, milestone behavior, theme customization, reset scope and schedules, migration, and build instructions. Corrected installation guidance to list both registered effects.
-- Added `npm run typecheck`, `npm run test:browser`, Jest support for raw HTML imports, and test fixtures. The suite includes **62 tests across 11 test suites**.
+- Added `npm run typecheck`, `npm run test:browser`, Jest support for raw HTML imports, and test fixtures. The suite includes **68 tests across 12 test suites**.
 - Added production-bundle browser tests for independent goals, effect-only creation, overlay isolation, refreshes, milestones, overfunding, literal templates, hiding/replacement, stale events, Extra Life colors, information-row styling, and rendered shine animations.
 - Added settings and layout tests for legacy sizing defaults, width/scale controls, preset anchors, custom offsets, automatic width changes, text fitting and ellipsis, font recovery, edge gaps, countdown padding, reduced-motion handling, and resizing across overlay dimensions.
 - Verified settings-controller evaluation in an isolated `eval(raw)` context and the production settings template with AngularJS 1.8.3 and Firebot 5.67.0's numeric input component. Tests cover default and saved dimensions, validation, Manager actions, and ISO date/time restoration without calendar-day shifts. Angular is used for development and testing only.
 - Added a regression test for font-size instability during width growth, covering the reported 700px / 100% scenario and recovery when text shortens.
-- **Verification status:** TypeScript checking, all 62 tests, the production build, and browser smoke tests passed. A live StreamElements reset from Advanced Goal Manager was also confirmed. Scheduled reset timing and behavior in default/named Firebot overlays still require live verification.
+- **Verification status:** TypeScript checking, all 68 tests, the production build, and browser smoke tests passed locally. The GitHub Actions browser run still needs verification. A live StreamElements reset from Advanced Goal Manager was also confirmed. Scheduled reset timing and behavior in default/named Firebot overlays still require live verification.
