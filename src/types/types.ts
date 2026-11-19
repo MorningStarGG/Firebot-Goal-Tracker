@@ -31,8 +31,9 @@ export interface Donation {
   total_donations: number;
 }
 
-export interface StreamElementsDonation extends IndividualDonation {}
+export interface StreamElementsDonation extends IndividualDonation { }
 export interface IndividualDonation extends BaseDonation {
+  id?: string;
   donationType?: 'bits' | 'subscription' | 'tip' | 'local';
   subTier?: 'prime' | 'tier1' | 'tier2' | 'tier3';
 }
@@ -83,7 +84,16 @@ export interface ColorScheme {
   infoBorderColor: string;
 }
 
+export interface AnimationBackground {
+  style: 'none' | 'solid' | 'gradient' | 'centered';
+  colorOne: string;
+  colorTwo: string;
+}
+
 export interface AnimationStyle {
+  headerBackground?: AnimationBackground;
+  subheaderBackground?: AnimationBackground;
+  animationBackgroundStyle?: AnimationBackground['style'];
   animationHighlight: string;
   animationBorder: string;
   animationText: string;
@@ -93,7 +103,11 @@ export interface AnimationStyle {
 }
 
 // Display Configuration
+export interface WidgetGaps { top: number; bottom: number; left: number; right: number }
 export interface DisplayConfig {
+  fixedSectionWidths?: boolean;
+  sizing?: { width: number; scale: number; autoWidth?: boolean };
+  gaps?: WidgetGaps;
   progressBar: BaseVisualConfig;
   countdown: {
     countdownPosition: string;
@@ -103,6 +117,8 @@ export interface DisplayConfig {
   showHighlight: boolean;
   infoSection: {
     infoPosition: 'above' | 'below';
+    /** Legacy info-only preference, migrated to display.fixedSectionWidths. */
+    fixedWidth?: boolean;
   };
 }
 
@@ -149,6 +165,7 @@ export interface StreamElementsConfig {
     tier3: number;
   };
   bitsValue: number;
+  autoReset?: boolean;
 }
 
 export interface ExtraLifeConfig {
@@ -178,6 +195,7 @@ export interface FeatureFlags {
 
 // Main Configuration Types
 export interface GoalTrackerConfig {
+  goalId: string;
   streamInfo: DateTimeInfo;
   donationGoal: number;
   mode: FeatureFlags;
@@ -200,6 +218,7 @@ export interface GoalTrackerConfig {
         };
         default: {
           src: string;
+          resourcePath?: string;
           alt: string;
           styles: Record<string, string>;
         };
@@ -228,6 +247,11 @@ export interface GoalTrackerConfig {
 
 // Effect and Update Types
 export interface EffectModel extends FeatureFlags {
+  goalId?: string;
+  widgetWidth?: number;
+  widgetScale?: number;
+  autoWidgetWidth?: boolean;
+  overlayGaps?: WidgetGaps;
   overlayInstance: string;
   startDate: string | Date;
   startTime: string | Date;
@@ -252,26 +276,42 @@ export interface EffectModel extends FeatureFlags {
 
 export interface GoalTrackerUpdate {
   type: 'update';
-  data: {
-    current?: string;
-    goal?: string;
-    recentDonations?: DonationData[];
-  };
+  goalId: string;
+  uuid: string;
+  revision: number;
+  data: GoalUpdateData;
   overlayInstance?: string;
+}
+
+export interface GoalUpdateData {
+  localDonations?: LocalDonationData;
+  streamElements?: ProcessedStreamElementsData;
+  extraLife?: ProcessedExtraLifeData;
 }
 
 // Event and Update Types
 export interface LocalUpdateEffectModel {
+  goalId?: string;
   donorName: string;
   donationAmount: number;
-  operation: 'add' | 'remove' | 'resetUser' | 'resetStreamElements' | 'resetExtraLife' | 'resetLocalData';
+  operation: 'add' | 'remove' | 'resetUser' | 'resetStreamElements' | 'resetExtraLife' | 'resetLocalData' | 'resetRemoteGoals' | 'hide';
 }
 
 export interface EventData {
+  type: 'show';
+  goalId: string;
   uuid: string;
   overlayInstance: string;
   config: GoalTrackerConfig;
+  data: GoalUpdateData;
+  revision: number;
 }
+
+export type GoalOverlayEvent = EventData | GoalTrackerUpdate | {
+  type: 'remove';
+  goalId: string;
+  revision: number;
+};
 
 // Platform-Specific Data Types
 export interface ExtraLifeDonation {
@@ -284,7 +324,7 @@ export interface ExtraLifeDonation {
 }
 
 export interface ProcessedStreamElementsData {
-  current: any;
+  current: StreamElementsResult;
   localDonations?: LocalDonationData;
   metadata: {
     month: number;
@@ -322,7 +362,7 @@ export interface LocalDonationData {
   };
 }
 
-export interface StreamElementsDonor extends DonationData {}
+export interface StreamElementsDonor extends DonationData { }
 
 export interface StreamElementsResult {
   donations: StreamElementsDonor[];
@@ -336,13 +376,15 @@ export interface ExtraLifeParticipantData {
 }
 
 export interface GoalState {
+  goalId: string;
   uuid: string;
-  display: {
-    styles: any;
-    templates: any;
-  };
+  revision?: number;
   config: GoalTrackerConfig;
   overlayInstance: string;
   createdAt: string;
   updatedAt: string;
+  active?: boolean;
+  localDonations?: LocalDonationData;
+  streamElements?: { lastUpdated: string; data: ProcessedStreamElementsData; lastGoalReset?: string };
+  extraLife?: { lastUpdated: string; data: ProcessedExtraLifeData };
 }

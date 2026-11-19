@@ -1,1056 +1,441 @@
-import { ScriptModules } from '@crowbartools/firebot-custom-scripts-types';
-import { JsonDB } from 'node-json-db';
-import { DonationData, ProcessedExtraLifeData, ExtraLifeParticipantData, ExtraLifeDonation, StreamElementsConfig, LocalDonationData, Donation, ProcessedStreamElementsData, StreamElementsDonor, StreamElementsDonation, StreamElementsResult } from '../types/types';
+﻿
+import { randomUUID } from 'crypto';
+import { GoalOverlayEvent, GoalState, GoalTrackerConfig, GoalUpdateData, LocalDonationData, ProcessedExtraLifeData } from '../types/types';
 import { logger } from '../logger';
+import { goalLogic as logic } from '../shared/goal-logic';
+import { clone, GoalDatabase, goalId, GoalStore } from './goal-store';
+import { PollingRegistry } from './polling-registry';
+import { StreamElementsClient, StreamElementsResets, StreamElementsSession } from './stream-elements';
+import { collectSourceDonations, emptyLocalData, filterDonations, goalCounters, groupDonations, mergeLocalDonations, processStreamElements, SourceDonation } from './donation-data';
 
-/**
- * GoalManager class handles all donation-related operations including tracking,
- * processing, and synchronizing donation data from multiple sources.
- */
-class GoalManager {
-    private _db: JsonDB;
+interface AccountHistory {
+    events: SourceDonation[];
+    counters?: Record<string, number>;
+    cutoff?: string;
+}
 
-    /**
-     * Creates a new GoalManager instance
-     * @param path - Path to the database file
-     * @param modules - Firebot script modules
-     */
-    constructor(path: string, modules: ScriptModules) {
-        // @ts-ignore
-        this._db = new modules.JsonDb(path, true, true);
+/** Coordinates independent goals while sharing account history and remote reset ownership. */
+export class GoalManager {
+    readonly store: GoalStore;
+    readonly resets: StreamElementsResets;
+    private pollers = new PollingRegistry();
+    private maintenance?: NodeJS.Timeout;
+    private accountJobs = new Map<string, Promise<unknown>>();
+    private sessions = new Map<string, { at: number; data: StreamElementsSession }>();
+    private starting?: Promise<void>;
+    private stopped = false;
+    private jobs = new Set<Promise<unknown>>();
+    // Display/polling activation belongs to this plugin activation, never to saved configuration.
+    private activeGoals = new Map<string, { uuid: string; revision: number; overlayInstance: string }>();
+
+    constructor(db: GoalDatabase, private publish: (event: GoalOverlayEvent, overlayInstance: string) => void,
+        private client = new StreamElementsClient(), private request: typeof fetch = (...args) => fetch(...args)) {
+        this.store = new GoalStore(db);
+        this.resets = new StreamElementsResets(this.store, client);
     }
 
-    /**
-     * Rounds a number to two decimal places to ensure consistent currency handling
-     * @param value - Number to round
-     * @returns Rounded number
-     */
-    private roundToTwoDecimals(value: number): number {
-        return parseFloat(value.toFixed(2));
+    async initialize(): Promise<void> {
+        if (!this.starting) this.starting = this.start().catch(error => { this.starting = undefined; throw error; });
+        return this.starting;
     }
 
-    /**
-     * Safely adds two numbers while handling floating point precision issues
-     * @param a - First number
-     * @param b - Second number
-     * @returns Sum of the two numbers, properly rounded
-     */
-    private safeAdd(a: number, b: number): number {
-        return this.roundToTwoDecimals((a * 100 + b * 100) / 100);
+    private async start(): Promise<void> {
+        await this.store.initialize();
+        if (this.stopped) return;
+        // Saved goals stay idle until their tracker effect runs. Account reset schedules are independent.
+        // Scheduled resets also run when a configured widget is hidden.
+        await this.checkScheduledResets();
+        if (this.stopped) return;
+        this.maintenance = setInterval(() => { void this.track(this.checkScheduledResets()).catch(error => logger.error('Goal reset check failed:', error)); }, 30000);
     }
 
-    /**
-     * Deep comparison of two objects, handling special cases like dates
-     * @param obj1 - First object to compare
-     * @param obj2 - Second object to compare
-     * @returns Boolean indicating if objects are equal
-     */
-    private isEqual(obj1: any, obj2: any): boolean {
-        // Handle null/undefined cases
-        if (obj1 === obj2) return true;
-        if (!obj1 || !obj2) return false;
-
-        // Handle date strings consistently
-        if (typeof obj1 === 'string' && typeof obj2 === 'string') {
-            const date1 = new Date(obj1).getTime();
-            const date2 = new Date(obj2).getTime();
-            if (!isNaN(date1) && !isNaN(date2)) {
-                return date1 === date2;
-            }
+    stop(): void {
+        if (this.stopped) return;
+        this.stopped = true;
+        this.pollers.stopAll();
+        for (const [id, goal] of this.activeGoals) {
+            this.publish({ type: 'remove', goalId: id, revision: goal.revision + 1 }, goal.overlayInstance);
         }
-
-        // Handle arrays
-        if (Array.isArray(obj1) && Array.isArray(obj2)) {
-            if (obj1.length !== obj2.length) return false;
-            return obj1.every((item, index) => this.isEqual(item, obj2[index]));
-        }
-
-        // Handle objects
-        if (typeof obj1 === 'object' && typeof obj2 === 'object') {
-            const keys1 = Object.keys(obj1);
-            const keys2 = Object.keys(obj2);
-            if (keys1.length !== keys2.length) return false;
-            return keys1.every(key => this.isEqual(obj1[key], obj2[key]));
-        }
-
-        return obj1 === obj2;
+        this.activeGoals.clear();
+        if (this.maintenance) clearInterval(this.maintenance);
+        this.sessions.clear();
     }
 
-    /**
-     * Processes StreamElements data to calculate totals and organize donations
-     * @param seData - Raw StreamElements data
-     * @param previousData - Previously processed data
-     * @param currentMonth - Current month for filtering
-     * @param currentYear - Current year for filtering
-     * @param config - StreamElements configuration
-     * @returns Processed StreamElements data
-     */
-    private processStreamElementsData(seData: any, previousData: any, currentMonth: number, currentYear: number, config: StreamElementsConfig): StreamElementsResult {
-        let cheerTotal = 0;
-        let subscriberTotal = 0;
-        let tipTotal = 0;
+    private track<T>(job: Promise<T>): Promise<T> {
+        this.jobs.add(job);
+        void job.then(() => this.jobs.delete(job), () => this.jobs.delete(job));
+        return job;
+    }
 
-        const subValues = config.subscriptionValues;
-        const bitsValue = config.bitsValue;
-        const summaryType = config.summaryType || 'monthly';
+    async dispose(): Promise<void> {
+        this.stop();
+        if (this.starting) await this.starting.catch(() => undefined);
+        while (this.jobs.size || this.accountJobs.size) {
+            await Promise.allSettled([...this.jobs, ...this.accountJobs.values()]);
+        }
+        await this.resets.drain();
+        await this.store.drain();
+    }
 
-        // Function to check if a donation is within the current period
-        const isInCurrentPeriod = (timestamp: string) => {
-            return summaryType === 'monthly'
-                ? this.isCurrentMonth(timestamp, currentMonth, currentYear)
-                : this.isCurrentWeek(timestamp);
-        };
+    isActive(id: string, uuid?: string): boolean {
+        const active = this.activeGoals.get(goalId(id));
+        return !this.stopped && !!active && (!uuid || active.uuid === uuid);
+    }
 
-        // Start with previous data but clean out old donations
-        const seResult: StreamElementsResult = {
-            donations: previousData?.donations
-                ? previousData.donations.map((donor: StreamElementsDonor) => ({
-                    ...donor,
-                    // Filter out old donations for each donor
-                    individual_donations: donor.individual_donations.filter(d =>
-                        isInCurrentPeriod(d.timestamp)
-                    )
-                }))
-                    // Remove donors who have no remaining donations after filtering
-                    .filter((donor: StreamElementsDonor) => donor.individual_donations.length > 0)
-                : [],
-            overall_total: { amount: 0, donation_count: 0 }
-        };
+    private async accountTask<T>(channel: string, work: () => Promise<T>): Promise<T> {
+        const previous = this.accountJobs.get(channel) || Promise.resolve();
+        const task = previous.catch(() => undefined).then(work);
+        this.accountJobs.set(channel, task);
+        try { return await task; }
+        finally { if (this.accountJobs.get(channel) === task) this.accountJobs.delete(channel); }
+    }
 
-        // Recalculate totals for remaining donations
-        seResult.donations.forEach(donor => {
-            donor.total_amount = this.roundToTwoDecimals(
-                donor.individual_donations.reduce((sum, d) => this.safeAdd(sum, d.amount), 0)
-            );
-            donor.total_donations = donor.individual_donations.length;
-            seResult.overall_total.amount = this.safeAdd(
-                seResult.overall_total.amount,
-                donor.total_amount
-            );
-            seResult.overall_total.donation_count += donor.total_donations;
+    private async assertResetSchedule(config: GoalTrackerConfig): Promise<void> {
+        const se = config.streamElements;
+        if (!se.useStreamElements || !se.autoReset) return;
+        const schedule = se.summaryType || 'monthly';
+        const conflicts = (await this.store.list()).filter(goal => goal.goalId !== config.goalId &&
+            goal.config?.streamElements?.useStreamElements && goal.config.streamElements.autoReset &&
+            goal.config.streamElements.channelId.toLowerCase() === se.channelId.toLowerCase() &&
+            (goal.config.streamElements.summaryType || 'monthly') !== schedule);
+        if (conflicts.length) throw new Error(`StreamElements account already has a different Date Range for automatic resets in goal ${conflicts[0].goalId}. Use the same Date Range for goals automatically resetting this account.`);
+    }
+
+    async activate(config: GoalTrackerConfig, overlayInstance: string, uuid: string = randomUUID()): Promise<void> {
+        overlayInstance = overlayInstance === 'Default' ? '' : overlayInstance;
+        await this.initialize();
+        const id = goalId(config.goalId);
+        config.goalId = id;
+        await this.assertResetSchedule(config);
+        const previous = await this.store.get(id);
+        const se = config.streamElements;
+        if (se.useStreamElements && se.autoReset) {
+            const otherSchedules = (await this.store.list()).some(goal => goal.goalId !== id &&
+                goal.config?.streamElements?.useStreamElements && goal.config.streamElements.autoReset &&
+                goal.config.streamElements.channelId.toLowerCase() === se.channelId.toLowerCase());
+            await this.resets.configure(se.channelId, se.summaryType || 'monthly', !previous?.config.streamElements.autoReset && !otherSchedules);
+        }
+        if (this.stopped) return;
+        const activated = await this.store.update(id, current => {
+            const state: GoalState = {
+                ...current, goalId: id, uuid, revision: (current?.revision || 0) + 1, config: clone(config), overlayInstance,
+                createdAt: current?.createdAt || new Date().toISOString(), updatedAt: new Date().toISOString()
+            };
+            delete state.active;
+            if (current?.config.streamElements.channelId !== se.channelId) delete state.streamElements;
+            if (current?.config.extraLife.participantId !== config.extraLife.participantId) delete state.extraLife;
+            return { state, result: state };
         });
-
-        /**
-         * Helper function to add a new donation to the result
-         */
-        const addDonation = (
-            name: string,
-            amount: number,
-            timestamp: string,
-            donationType: "bits" | "subscription" | "tip" | "local",
-            subTier?: "prime" | "tier1" | "tier2" | "tier3"
-        ): void => {
-            let donor = seResult.donations.find((d: StreamElementsDonor) =>
-                d.name.toLowerCase() === name.toLowerCase());
-
-            if (!donor) {
-                const localDonor = previousData?.localDonations?.donations.find(
-                    (d: DonationData) => d.name.toLowerCase() === name.toLowerCase()
-                );
-
-                donor = {
-                    name,
-                    individual_donations: localDonor?.individual_donations || [],
-                    total_amount: this.roundToTwoDecimals(localDonor?.total_amount || 0),
-                    total_donations: localDonor?.total_donations || 0
-                };
-                seResult.donations.push(donor);
-            }
-
-            // Check for duplicate donations
-            const duplicate = donor.individual_donations.some((d: StreamElementsDonation) =>
-                d.amount === amount && d.timestamp === timestamp
-            );
-
-            if (!duplicate) {
-                const numericAmount = this.roundToTwoDecimals(amount);
-                donor.individual_donations.push({
-                    amount: numericAmount,
-                    timestamp,
-                    donationType,
-                    ...(subTier && { subTier })
-                });
-                donor.total_amount = this.safeAdd(donor.total_amount, numericAmount);
-                donor.total_donations++;
-                seResult.overall_total.amount = this.safeAdd(
-                    seResult.overall_total.amount,
-                    numericAmount
-                );
-                seResult.overall_total.donation_count++;
-            }
-        };
-
-        // Process subscribers
-        seData.data['subscriber-recent']?.forEach((sub: any) => {
-            if (isInCurrentPeriod(sub.createdAt)) {
-                const subValue =
-                    sub.tier === '2000' ? subValues.tier2 :
-                        sub.tier === '3000' ? subValues.tier3 :
-                            sub.tier === 'prime' ? subValues.prime :
-                                subValues.tier1;
-
-                subscriberTotal += subValue;
-                const latestGifted = seData.data['subscriber-gifted-latest'];
-                const isGifted = latestGifted &&
-                    latestGifted.name === sub.name &&
-                    latestGifted.tier === sub.tier;
-                const donorName = isGifted ? latestGifted.sender : sub.name;
-                addDonation(donorName, subValue, sub.createdAt, 'subscription', sub.tier);
-            }
-        });
-
-        // Process bits/cheers
-        seData.data['cheer-recent']?.forEach((cheer: any) => {
-            if (isInCurrentPeriod(cheer.createdAt)) {
-                const cheerValue = cheer.amount * bitsValue;
-                cheerTotal += cheerValue;
-                addDonation(cheer.name, cheerValue, cheer.createdAt, 'bits');
-            }
-        });
-
-        // Process tips/donations
-        seData.data['tip-recent']?.forEach((tip: any) => {
-            if (isInCurrentPeriod(tip.createdAt)) {
-                const tipValue = typeof tip.amount === 'string' ? parseFloat(tip.amount) : tip.amount;
-                tipTotal += tipValue;
-                addDonation(tip.name, tipValue, tip.createdAt, 'tip');
-            }
-        });
-
-        // Compare with period summaries and adjust if needed
-        const cheerGoal = seData.data['cheer-goal']?.amount * bitsValue || 0;
-        const subscriberGoal = seData.data['subscriber-goal']?.amount * subValues.tier1 || 0;
-        const tipGoal = seData.data['tip-goal']?.amount || 0;
-
-        // Add any missing amounts from summaries
-        if (cheerGoal > cheerTotal) {
-            seResult.overall_total.amount += cheerGoal - cheerTotal;
+        if (this.stopped) return;
+        this.activeGoals.set(id, { uuid, revision: activated.revision || 0, overlayInstance });
+        if (previous && previous.overlayInstance !== overlayInstance) {
+            this.publish({ type: 'remove', goalId: id, revision: (previous.revision || 0) + 1 }, previous.overlayInstance);
         }
-        if (subscriberGoal > subscriberTotal) {
-            seResult.overall_total.amount += subscriberGoal - subscriberTotal;
-        }
-        if (tipGoal > tipTotal) {
-            seResult.overall_total.amount += tipGoal - tipTotal;
-        }
+        await this.sendGoalState(id, 'show', undefined, uuid);
+        if (this.isActive(id, uuid)) this.startPolling(activated);
+    }
 
-        // Sort donations by timestamp and amount
-        seResult.donations.forEach((donor: StreamElementsDonor) => {
-            donor.individual_donations.sort((a: StreamElementsDonation, b: StreamElementsDonation) =>
-                new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
-            );
+    private startPolling(state: GoalState): void {
+        if (!this.isActive(state.goalId, state.uuid)) return;
+        const config = state.config;
+        const interval = config.extraLife.useExtraLife ? config.extraLife.dataPollInterval :
+            config.streamElements.useStreamElements ? config.streamElements.pollInterval : config.timing.dataPollInterval;
+        this.pollers.start(state.goalId, Math.max(1, logic.number(interval, 60)), async isCurrent => {
+            try { await this.track(this.poll(state.goalId, state.uuid, isCurrent)); }
+            catch (error) { logger.error(`Goal ${state.goalId} update failed:`, error); }
         });
-
-        seResult.donations.sort((a: StreamElementsDonor, b: StreamElementsDonor) => b.total_amount - a.total_amount);
-
-        return seResult;
     }
 
-    /**
-     * Checks if a given date is in the current month
-     * @param dateStr - ISO date string to check
-     * @param currentMonth - Month to compare against (0-11)
-     * @param currentYear - Year to compare against
-     * @returns Boolean indicating if date is in the current month
-     */
-    private isCurrentMonth(dateStr: string, currentMonth: number, currentYear: number): boolean {
-        const date = new Date(dateStr);
-        return date.getMonth() === currentMonth && date.getFullYear() === currentYear;
-    }
-
-    /**
-     * Checks if a given date is in the current week (Sunday to Saturday)
-     * @param dateStr - ISO date string to check
-     * @returns Boolean indicating if date is in the current week
-     */
-    private isCurrentWeek(dateStr: string): boolean {
-        const date = new Date(dateStr);
-        const now = new Date();
-        const weekStart = new Date(now);
-        weekStart.setDate(now.getDate() - now.getDay()); // Set to Sunday
-        weekStart.setHours(0, 0, 0, 0);
-
-        const weekEnd = new Date(weekStart);
-        weekEnd.setDate(weekStart.getDate() + 7);
-
-        return date >= weekStart && date < weekEnd;
-    }
-
-    /**
-     * Checks if a given date is today
-     * @param dateStr - ISO date string to check
-     * @returns Boolean indicating if date is today
-     */
-    private isCurrentDay(dateStr: string): boolean {
-        const date = new Date(dateStr);
-        const now = new Date();
-        return date.getDate() === now.getDate() &&
-            date.getMonth() === now.getMonth() &&
-            date.getFullYear() === now.getFullYear();
-    }
-
-    /**
-     * Checks and resets StreamElements goal values if needed based on timing conditions.
-     * Goals are reset at the start of each week (for weekly summaries) or month (for monthly summaries).
-     * The function will reset all goal values (tips, cheers, subscribers, followers) to 0 using the StreamElements API.
-     * 
-     * @param channelId - The StreamElements channel ID to reset goals for
-     * @param jwtToken - JWT authentication token for StreamElements API
-     * @param summaryType - Determines reset timing: 'weekly' resets on Sundays, 'monthly' resets on the 1st
-     * 
-     * @remarks
-     * - For weekly summaries, resets occur at the start of Sunday (UTC)
-     * - For monthly summaries, resets occur at the start of the 1st day of each month (UTC)
-     * - The function checks the last reset time to prevent multiple resets on the same day
-     * - The reset time is stored in the database at '/goal/streamElements/lastGoalReset'
-     */
-    private async resetGoalValuesIfNeeded(channelId: string, jwtToken: string, summaryType: 'weekly' | 'monthly') {
-        try {
-            // Get current time in UTC
+    private async poll(id: string, uuid: string, isCurrent: () => boolean): Promise<void> {
+        const state = await this.store.get(id);
+        if (!state || state.uuid !== uuid || !isCurrent() || !this.isActive(id, uuid)) return;
+        let data: GoalUpdateData = {};
+        if (state.config.extraLife.useExtraLife) {
+            data.extraLife = await this.fetchExtraLife(state);
+        } else if (state.config.streamElements.useStreamElements) {
+            const se = state.config.streamElements;
+            const source = await this.getAccountSource(state.config);
             const now = new Date();
-            const lastResetKey = `/goal/streamElements/lastGoalReset`;
-
-            // Check if we need to reset based on summary type
-            let shouldReset = false;
-            try {
-                const lastReset = new Date(await this._db.getData(lastResetKey));
-
-                if (summaryType === 'weekly') {
-                    // Check if it's a new week (Sunday) and we haven't reset yet today
-                    shouldReset = now.getDay() === 0 && 
-                        lastReset.getDate() !== now.getDate(); 
-                } else {
-                    // Check if it's the first of the month and we haven't reset yet today
-                    shouldReset = now.getDate() === 1 && 
-                        lastReset.getDate() !== now.getDate();
-                }
-            } catch {
-                // No last reset found, we should do a reset
-                shouldReset = true;
-            }
-
-            if (shouldReset) {
-                // Reset the goals via StreamElements API
-                const response = await fetch(
-                    `https://api.streamelements.com/kappa/v2/sessions/${channelId}`,
-                    {
-                        method: 'PUT',
-                        headers: {
-                            'Accept': 'application/json',
-                            'Content-Type': 'application/json',
-                            'Authorization': `Bearer ${jwtToken}`
-                        },
-                        body: JSON.stringify({
-                            // Reset just the goal values
-                            'tip-goal': { amount: 0 },
-                            'cheer-goal': { amount: 0 },
-                            'subscriber-goal': { amount: 0 },
-                            'follower-goal': { amount: 0 }
-                        })
-                    }
-                );
-
-                if (!response.ok) {
-                    throw new Error(`Failed to reset goals: ${response.status} ${response.statusText}`);
-                }
-
-                // Save the reset time
-                await this._db.push(lastResetKey, new Date().toISOString());
-                logger.info('Successfully reset StreamElements goals');
-            }
-        } catch (error) {
-            logger.error('Error resetting StreamElements goals:', error);
-            throw error;
-        }
-    }
-
-    /**
-      * Retrieves goal data from the database
-      * @returns Goal data if found, undefined otherwise
-      */
-    async getGoalData() {
-        try {
-            return await this._db.getData('/goal');
-        } catch {
-            return undefined;
-        }
-    }
-
-    /**
-     * Resets StreamElements data to initial state
-     * @throws Error if reset operation fails
-     */
-    async resetStreamElementsData(): Promise<void> {
-        try {
-            const goalState = await this.getGoalData();
-            if (!goalState) return;
-
-            // Initialize fresh StreamElements data structure
-            goalState.streamElements = {
-                lastUpdated: new Date().toISOString(),
-                data: {
-                    current: {
-                        donations: [],
-                        overall_total: {
-                            amount: 0,
-                            donation_count: 0
-                        }
-                    },
-                    metadata: {
-                        month: new Date().getMonth(),
-                        year: new Date().getFullYear(),
-                        lastUpdated: new Date().toISOString()
-                    }
-                }
+            data.streamElements = {
+                current: processStreamElements(source.session, source.events, se, now),
+                metadata: { month: now.getMonth(), year: now.getFullYear(), lastUpdated: now.toISOString() }
             };
-
-            await this.updateGoalData(goalState);
-        } catch (error) {
-            logger.error('Error resetting StreamElements data:', error);
-            throw error;
         }
-    }
-
-    /**
-     * Resets Extra Life data to initial state
-     * @throws Error if reset operation fails
-     */
-    async resetExtraLifeData(): Promise<void> {
-        try {
-            const goalState = await this.getGoalData();
-            if (!goalState) return;
-
-            // Initialize fresh Extra Life data structure
-            goalState.extraLife = {
-                lastUpdated: new Date().toISOString(),
-                data: {
-                    sumDonations: 0,
-                    fundraisingGoal: goalState.config.donationGoal,
-                    donations: [],
-                    metadata: {
-                        lastUpdated: new Date().toISOString(),
-                        participantId: goalState.config.extraLife.participantId,
-                        eventID: ''
-                    }
-                }
-            };
-
-            await this.updateGoalData(goalState);
-        } catch (error) {
-            logger.error('Error resetting Extra Life data:', error);
-            throw error;
-        }
-    }
-
-    /**
-     * Resets local donation data to initial state
-     * @throws Error if reset operation fails
-     */
-    async resetLocalData(): Promise<void> {
-        try {
-            // Reset local donations to initial state
-            const emptyLocalData: LocalDonationData = {
-                data: {
-                    donations: [],
-                    overall_total: {
-                        amount: 0,
-                        donation_count: 0
-                    },
-                    metadata: {
-                        lastUpdated: new Date().toISOString()
-                    }
-                }
-            };
-
-            await this._db.push(`/goal/localDonations`, emptyLocalData);
-        } catch (error) {
-            logger.error('Error resetting local donation data:', error);
-            throw error;
-        }
-    }
-
-    /**
-     * Resets all donations for a specific user
-     * @param userName - Name of the user whose donations should be reset
-     * @returns Updated local donation data
-     * @throws Error if user not found or operation fails
-     */
-    async resetUserDonations(userName: string): Promise<LocalDonationData> {
-        try {
-            const currentLocalData = await this.getLocalDonations();
-            if (!currentLocalData?.data?.donations) {
-                throw new Error('No local donation data found');
-            }
-
-            // Find the donor
-            const donorIndex = currentLocalData.data.donations.findIndex(
-                donor => donor.name.toLowerCase() === userName.toLowerCase()
-            );
-
-            if (donorIndex === -1) {
-                throw new Error('Donor not found');
-            }
-
-            const donor = currentLocalData.data.donations[donorIndex];
-
-            // Update overall totals by subtracting donor's contributions
-            currentLocalData.data.overall_total.amount = this.roundToTwoDecimals(
-                currentLocalData.data.overall_total.amount - donor.total_amount
-            );
-            currentLocalData.data.overall_total.donation_count -= donor.total_donations;
-
-            // Remove the donor's data
-            currentLocalData.data.donations.splice(donorIndex, 1);
-
-            // Update metadata timestamp
-            currentLocalData.data.metadata.lastUpdated = new Date().toISOString();
-
-            // Save the updated data
-            await this._db.push(`/goal/localDonations`, currentLocalData);
-            return currentLocalData;
-        } catch (error) {
-            logger.error('Error removing all donations from user:', error);
-            throw error;
-        }
-    }
-
-    /**
-    * Adds or updates a local donation
-    * @param donation - Object containing donor name and donation amount
-    * @returns Updated local donation data or null if duplicate detected
-    * @throws Error if donation amount is invalid or operation fails
-    */
-    async updateLocalDonation(donation: { name: string, amount: number }): Promise<LocalDonationData | null> {
-        try {
-            if (donation.amount <= 0) {
-                throw new Error('Donation amount must be greater than 0');
-            }
-
-            // Initialize or get current local data
-            const currentLocalData: LocalDonationData = await this.getLocalDonations() || {
-                data: {
-                    donations: [],
-                    overall_total: {
-                        amount: 0,
-                        donation_count: 0
-                    },
-                    metadata: {
-                        lastUpdated: new Date().toISOString()
-                    }
-                }
-            };
-
-            // Create new donation record
-            const newDonation: StreamElementsDonation = {
-                amount: this.roundToTwoDecimals(donation.amount),
-                timestamp: new Date().toISOString(),
-                donationType: "local"
-            };
-
-            // Check for duplicate donations within a small time window (e.g., 5 seconds)
-            const isDuplicate = currentLocalData.data.donations.some(donor =>
-                donor.name.toLowerCase() === donation.name.toLowerCase() &&
-                donor.individual_donations.some(d => {
-                    const timeDiff = Math.abs(
-                        new Date(d.timestamp).getTime() - new Date(newDonation.timestamp).getTime()
-                    );
-                    return d.amount === newDonation.amount && timeDiff < 5000; // 5 second window
-                })
-            );
-
-            if (isDuplicate) {
-                logger.info('Duplicate donation detected, skipping update');
-                return null;
-            }
-
-            // Find or create donor record
-            let donor = currentLocalData.data.donations.find(
-                d => d.name.toLowerCase() === donation.name.toLowerCase()
-            );
-
-            if (!donor) {
-                donor = {
-                    name: donation.name,
-                    individual_donations: [],
-                    total_amount: 0,
-                    total_donations: 0
-                };
-                currentLocalData.data.donations.push(donor);
-            }
-
-            // Update donor and overall totals
-            donor.individual_donations.push(newDonation);
-            donor.total_amount = this.safeAdd(donor.total_amount, newDonation.amount);
-            donor.total_donations++;
-
-            currentLocalData.data.overall_total.amount = this.safeAdd(
-                currentLocalData.data.overall_total.amount,
-                newDonation.amount
-            );
-            currentLocalData.data.overall_total.donation_count++;
-            currentLocalData.data.metadata = {
-                lastUpdated: new Date().toISOString()
-            };
-
-            await this._db.push(`/goal/localDonations`, currentLocalData);
-            return currentLocalData;
-        } catch (error) {
-            logger.error('Error updating local donation:', error);
-            throw error;
-        }
-    }
-
-    /**
-     * Removes a specific local donation by its timestamp
-     * @param timestamp - ISO timestamp of the donation to remove
-     * @returns Updated local donation data
-     * @throws Error if donation not found or operation fails
-     */
-    async removeLocalDonation(timestamp: string): Promise<LocalDonationData> {
-        try {
-            const currentLocalData = await this.getLocalDonations();
-            if (!currentLocalData?.data?.donations) {
-                throw new Error('No local donation data found');
-            }
-
-            // Find the donation and its donor
-            let donorIndex = -1;
-            let donationIndex = -1;
-
-            currentLocalData.data.donations.forEach((donor, dIndex) => {
-                const donationIdx = donor.individual_donations.findIndex(d => d.timestamp === timestamp);
-                if (donationIdx !== -1) {
-                    donorIndex = dIndex;
-                    donationIndex = donationIdx;
-                }
-            });
-
-            if (donorIndex === -1 || donationIndex === -1) {
-                throw new Error('Donation not found');
-            }
-
-            const donor = currentLocalData.data.donations[donorIndex];
-            const removedDonation = donor.individual_donations[donationIndex];
-
-            // Update donor totals
-            donor.individual_donations.splice(donationIndex, 1);
-            donor.total_amount = donor.total_amount - removedDonation.amount;
-            donor.total_donations--;
-
-            // Remove donor if they have no remaining donations
-            if (donor.individual_donations.length === 0) {
-                currentLocalData.data.donations.splice(donorIndex, 1);
-            }
-
-            // Update overall totals
-            currentLocalData.data.overall_total.amount = currentLocalData.data.overall_total.amount - removedDonation.amount;
-            currentLocalData.data.overall_total.donation_count--;
-            currentLocalData.data.metadata.lastUpdated = new Date().toISOString();
-
-            await this._db.push(`/goal/localDonations`, currentLocalData);
-
-            return currentLocalData;
-        } catch (error) {
-            logger.error('Error removing local donation:', error);
-            throw error;
-        }
-    }
-
-    /**
-     * Gets all local donations for a goal
-     */
-    async getLocalDonations(): Promise<LocalDonationData | undefined> {
-        try {
-            return await this._db.getData(`/goal/localDonations`);
-        } catch {
-            return undefined;
-        }
-    }
-
-    /**
-     * Updates the goal data in the database
-     * @param data - Goal data to update
-     * @returns Promise<void>
-     * @throws Error if update operation fails
-     */
-    async updateGoalData(data: any) {
-        try {
-            const currentState = await this.getGoalData() || {
-                uuid: data.uuid,
-                config: data.config,
-                overlayInstance: data.overlayInstance,
-                createdAt: new Date().toISOString()
-            };
-
-            // Keep existing config if present
-            if (data.config) {
-                currentState.config = data.config;
-            }
-
-            // Store StreamElements data without config
-            if (data.streamElements) {
-                currentState.streamElements = {
-                    lastUpdated: data.streamElements.lastUpdated,
-                    lastGoalReset: data.streamElements.lastGoalReset,
-                    data: data.streamElements.data
-                };
-            }
-
-            // Store Extra Life data without config
+        if (!isCurrent() || this.stopped) return;
+        const applied = await this.store.update(id, current => {
+            if (!current || current.uuid !== uuid || !isCurrent()) return { state: current!, result: false };
+            if (data.streamElements) current.streamElements = { lastUpdated: new Date().toISOString(), data: data.streamElements };
             if (data.extraLife) {
-                currentState.extraLife = {
-                    lastUpdated: data.extraLife.lastUpdated,
-                    data: data.extraLife.data
-                };
+                const stored = clone(data.extraLife);
+                delete stored.newDonations;
+                current.extraLife = { lastUpdated: new Date().toISOString(), data: stored };
             }
-
-            // Store local donations data without config
-            if (data.localDonations) {
-                currentState.localDonations = {
-                    lastUpdated: data.localDonations.lastUpdated,
-                    data: data.localDonations.data
-                };
-            }
-
-            // Calculate combined totals
-            let totalAmount = 0;
-            let allDonations: Array<Donation> = [];
-
-            // Add local donations
-            if (currentState.localDonations) {
-                totalAmount = totalAmount + currentState.localDonations.total;
-                allDonations = allDonations.concat(currentState.localDonations.donations);
-            }
-
-            // Add StreamElements donations
-            if (currentState.streamElements?.data?.current?.overall_total) {
-                totalAmount = totalAmount + currentState.streamElements.data.current.overall_total.amount;
-                allDonations = allDonations.concat(currentState.streamElements.data.current.donations);
-            }
-
-            // Add Extra Life donations
-            if (currentState.extraLife?.data?.sumDonations) {
-                totalAmount = totalAmount + currentState.extraLife.data.sumDonations;
-                allDonations = allDonations.concat(currentState.extraLife.data.donations);
-            }
-
-            // Save updated state
-            await this._db.push('/goal', {
-                ...currentState,
-                updatedAt: new Date().toISOString()
-            });
-        } catch (error) {
-            logger.error('Error updating goal:', error);
-            throw error;
-        }
-    }
-
-    /**
-      * Updates StreamElements data in the database
-     * @param data - StreamElements data to update
-     * @returns Promise<void>
-     * @throws Error if update operation fails
-     */
-    async updateStreamElementsData(data: any) {
-        await this._db.push(`/goal/streamElements`, data);
-    }
-
-    /**
-     * Updates Extra Life data in the database
-     * @param data - Extra Life data to update
-     * @returns Promise<void>
-     * @throws Error if update operation fails
-     */
-    async updateExtraLifeData(data: any) {
-        await this._db.push(`/goal/extraLife`, data);
-    }
-
-    /**
-     * Updates a single donation in the database
-     * @param donation - Object containing donor name and donation amount
-     * @returns Promise<void>
-     * @throws Error if update operation fails
-     */
-    async updateDonation(donation: { name: string, amount: number }) {
-        const goalState = await this.getGoalData();
-        if (!goalState) return;
-
-        goalState.donations.push({
-            ...donation,
-            timestamp: new Date().toISOString()
+            return { state: current, result: true };
         });
-        goalState.current += donation.amount;
-
-        await this.updateGoalData(goalState);
+        if (applied && isCurrent()) await this.sendUpdate(id, data.extraLife?.newDonations);
     }
 
-    /**
-     * Retrieves StreamElements data from the database
-     * @returns Promise<any | undefined> StreamElements data if found, undefined otherwise
-     */
-    async syncExternalData(
-        source: 'streamElements' | 'extraLife',
-        newData: ProcessedStreamElementsData | ProcessedExtraLifeData
-    ): Promise<boolean> {
-        try {
-            const goalState = await this.getGoalData();
-            if (!goalState) return false;
-
-            const currentData = goalState[source]?.data;
-            const lastGoalReset = goalState[source]?.lastGoalReset;  // Preserve this value
-
-            // Skip update if data hasn't changed
-            if (currentData && this.isEqual(currentData, newData)) {
-                logger.info(`${source} data unchanged, skipping update`);
-                return false;
-            }
-
-            goalState[source] = {
-                lastUpdated: new Date().toISOString(),
-                lastGoalReset: lastGoalReset,  // Keep the lastGoalReset
-                data: newData
-            };
-
-            await this.updateGoalData(goalState);
-            return true;
-        } catch (error) {
-            logger.error(`Error syncing ${source} data:`, error);
-            throw error;
-        }
-    }
-
-    /**
-     * Polls the StreamElements API for updated donation data
-     * @param channelId - StreamElements channel ID
-     * @param jwtToken - StreamElements JWT authentication token
-     * @param useLocalDonations - Flag to include local donations in processing
-     * @returns Processed StreamElements data or null if error occurs
-     */
-    async pollStreamElements(channelId: string, jwtToken: string, useLocalDonations: boolean = false) {
-        try {
-            const goalState = await this.getGoalData();
-            if (!goalState) return null;
-
-            // Check and reset goals if needed
-            await this.resetGoalValuesIfNeeded(
-                channelId,
-                jwtToken,
-                goalState?.config?.streamElements?.summaryType || 'monthly'
-            );
-
-            const previousData = await this.getStreamElementsData();
-            const config = goalState.config.streamElements;
-
-            // Fetch current data from StreamElements API
-            const response = await fetch(
-                `https://api.streamelements.com/kappa/v2/sessions/${channelId}`,
-                {
-                    headers: {
-                        'Accept': 'application/json',
-                        'Authorization': `Bearer ${jwtToken}`
-                    }
+    private async getAccountSource(config: GoalTrackerConfig): Promise<{ session: StreamElementsSession; events: SourceDonation[] }> {
+        const se = config.streamElements;
+        const channel = se.channelId.toLowerCase();
+        return this.accountTask(channel, async () => {
+            if (se.autoReset) {
+                await this.assertResetSchedule(config);
+                if (await this.resets.run(channel, se.jwtToken, se.summaryType || 'monthly')) {
+                    this.sessions.delete(channel);
+                    await this.refreshAccount(channel);
                 }
-            );
-
-            if (!response.ok) {
-                logger.error(`StreamElements API error: ${response.status} ${response.statusText}`);
-                return previousData || null;
             }
-
-            const currentData = await response.json();
-            const now = new Date();
-
-            // Process the new data
-            const processedData = this.processStreamElementsData(
-                currentData,
-                previousData,
-                now.getMonth(),
-                now.getFullYear(),
-                config
-            );
-
-            // Compare with previous data before updating
-            if (previousData?.current && this.isEqual(previousData.current, processedData)) {
-                logger.info('StreamElements data unchanged, skipping update');
-                return previousData;
+            const cached = this.sessions.get(channel);
+            const session = cached && Date.now() - cached.at < 1000 ? cached.data : await this.client.get(channel, se.jwtToken);
+            this.sessions.set(channel, { at: Date.now(), data: session });
+            const path = `/streamElementsAccounts/${channel}/source`;
+            const old = await this.store.read<AccountHistory>(path) || { events: await this.legacySourceHistory(channel) };
+            const reset = await this.resets.state(channel);
+            const counters = goalCounters(session);
+            let cutoff = old.cutoff;
+            const knownReset = !!reset?.lastResetAt && (!cutoff || reset.lastResetAt > cutoff);
+            if (knownReset) cutoff = reset!.lastResetAt;
+            // The user can also reset goal progress directly in the SE dashboard.
+            if (!knownReset && old.counters && Object.keys(counters).some(key => Number.isFinite(old.counters![key]) && counters[key] < old.counters![key])) {
+                cutoff = new Date().toISOString();
             }
+            const events = collectSourceDonations(session, old.events, cutoff);
+            await this.store.db.push(path, { events, counters, ...(cutoff ? { cutoff } : {}) }, true);
+            return { session, events };
+        });
+    }
 
-            // Prepare final data structure
-            const finalData: ProcessedStreamElementsData = {
-                current: processedData,
-                metadata: {
-                    month: now.getMonth(),
-                    year: now.getFullYear(),
-                    lastUpdated: now.toISOString()
+    private async legacySourceHistory(channel: string): Promise<SourceDonation[]> {
+        const rows: SourceDonation[] = [];
+        for (const goal of await this.store.list()) {
+            const se = goal.config?.streamElements;
+            if (!se) continue;
+            if (se.channelId.toLowerCase() !== channel) continue;
+            for (const donor of goal.streamElements?.data.current.donations || []) {
+                for (const donation of donor.individual_donations) {
+                    if (donation.donationType === 'local') continue;
+                    const kind = donation.donationType || 'tip';
+                    const amount = kind === 'subscription' ? 1 : kind === 'bits' ? donation.amount / se.bitsValue : donation.amount;
+                    if (!Number.isFinite(amount) || amount <= 0) continue;
+                    const rawTier = String(donation.subTier || 'tier1');
+                    const tier = rawTier === '3000' ? 'tier3' : rawTier === '2000' ? 'tier2' : rawTier === 'prime' ? 'prime' : rawTier === 'tier3' ? 'tier3' : rawTier === 'tier2' ? 'tier2' : 'tier1';
+                    const identity = donation.id || `${kind}:${donor.name.toLowerCase()}:${donation.timestamp}:${amount}:${kind === 'subscription' ? tier : ''}`;
+                    rows.push({ id: identity, name: donor.name, timestamp: donation.timestamp, kind, amount, ...(kind === 'subscription' ? { tier } : {}) });
                 }
-            };
+            }
+        }
+        return rows;
+    }
 
-            await this.syncExternalData('streamElements', finalData);
-            return finalData;
-
-        } catch (err: unknown) {
-            const error = err as Error;
-            logger.error('StreamElements polling error:', {
-                name: error?.name || 'Unknown Error',
-                message: error?.message || 'No error message available',
-                stack: error?.stack || 'No stack trace available'
-            });
-            return null;
+    private async checkScheduledResets(): Promise<void> {
+        const seen = new Set<string>();
+        for (const goal of await this.store.list()) {
+            const se = goal.config?.streamElements;
+            if (!se?.useStreamElements || !se.autoReset || seen.has(se.channelId.toLowerCase()) || this.stopped) continue;
+            seen.add(se.channelId.toLowerCase());
+            try {
+                await this.assertResetSchedule(goal.config);
+                const changed = await this.accountTask(se.channelId.toLowerCase(), async () => {
+                    const result = await this.resets.run(se.channelId, se.jwtToken, se.summaryType || 'monthly');
+                    if (result) this.sessions.delete(se.channelId.toLowerCase());
+                    return result;
+                });
+                if (changed) await this.refreshAccount(se.channelId);
+            } catch (error) { logger.error(`StreamElements reset failed for goal ${goal.goalId}:`, error); }
         }
     }
 
-    async getStreamElementsData() {
-        try {
-            const goalState = await this.getGoalData();
-            return goalState?.streamElements?.data;
-        } catch {
-            return undefined;
+    async resetRemoteGoals(id = 'default'): Promise<void> {
+        const state = await this.requireGoal(id);
+        if (this.stopped) throw new Error('Goal Tracker plugin is unloading');
+        const se = state.config.streamElements;
+        if (!se.useStreamElements) throw new Error('Enable StreamElements on the selected goal before resetting its account goals');
+        await this.accountTask(se.channelId.toLowerCase(), async () => {
+            await this.resets.run(se.channelId, se.jwtToken, se.summaryType || 'monthly', true);
+            this.sessions.delete(se.channelId.toLowerCase());
+        });
+        await this.refreshAccount(se.channelId);
+    }
+
+    private async refreshAccount(channel: string): Promise<void> {
+        for (const goal of await this.store.list()) {
+            if (goal.config && !goal.config.extraLife.useExtraLife && goal.config.streamElements.useStreamElements &&
+                goal.config.streamElements.channelId.toLowerCase() === channel.toLowerCase()) {
+                await this.store.update(goal.goalId, state => { delete state!.streamElements; return { state: state!, result: undefined }; });
+                await this.sendUpdate(goal.goalId);
+                const current = await this.store.get(goal.goalId);
+                if (current && this.isActive(current.goalId, current.uuid)) this.startPolling(current);
+            }
         }
     }
 
-    /**
-     * Polls the Extra Life API for updated donation data
-     * @param participantId - Extra Life participant ID
-     * @returns Processed Extra Life data or null if error occurs
-     */
-    async pollExtraLife(participantId: string | null): Promise<ProcessedExtraLifeData | null> {
-        if (!participantId) {
-            logger.info('Extra Life polling skipped - no participant ID provided');
-            return null;
-        }
-
+    private async fetchExtraLife(state: GoalState): Promise<ProcessedExtraLifeData> {
+        const participantId = state.config.extraLife.participantId;
+        if (!participantId || !/^\d+$/.test(participantId)) throw new Error('Extra Life Participant ID must contain only digits');
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 15000);
+        let participant: any;
+        let incoming: any[];
         try {
-            const goalState = await this.getGoalData();
-            const previousData = await this.getExtraLifeData();
-
-            // Check if participant ID has changed
-            const hasParticipantChanged = previousData &&
-                previousData.metadata.participantId !== participantId;
-
-            if (hasParticipantChanged) {
-                logger.info(`Participant ID changed from ${previousData.metadata.participantId} to ${participantId}. Clearing previous donations.`);
-            }
-
-            // Fetch participant data
-            const participantResponse = await fetch(
-                `https://www.extra-life.org/api/participants/${participantId}`
-            );
-            if (!participantResponse.ok) {
-                logger.error(`Extra Life participant API error: ${participantResponse.status}`);
-                return previousData || null;
-            }
-            const participantData = await participantResponse.json() as ExtraLifeParticipantData & {
-                eventID: string;
-            };
-
-            // Only compare data if participant hasn't changed
-            if (!hasParticipantChanged && previousData &&
-                previousData.sumDonations === participantData.sumDonations &&
-                previousData.fundraisingGoal === participantData.fundraisingGoal &&
-                previousData.metadata.eventID === participantData.eventID) {
-                logger.info('Extra Life data unchanged, skipping update');
-                return previousData;
-            }
-
-            // Fetch donations
-            const donationsResponse = await fetch(
+            [participant, incoming] = await Promise.all([
+                `https://www.extra-life.org/api/participants/${participantId}`,
                 `https://www.extra-life.org/api/participants/${participantId}/donations`
-            );
-            if (!donationsResponse.ok) {
-                logger.error(`Extra Life donations API error: ${donationsResponse.status}`);
-                return previousData || null;
-            }
-            const donations = await donationsResponse.json() as any[];
-
-            // Process and validate the data
-            const processedData: ProcessedExtraLifeData = {
-                sumDonations: participantData.sumDonations || 0,
-                fundraisingGoal: participantData.fundraisingGoal || goalState.config.donationGoal,
-                donations: [],
-                metadata: {
-                    lastUpdated: new Date().toISOString(),
-                    participantId: participantId,
-                    eventID: participantData.eventID
-                }
-            };
-
-            // Process donations for current event only
-            const validDonations = donations.map((donation): ExtraLifeDonation => ({
-                amount: donation.amount,
-                displayName: donation.displayName || 'Anonymous',
-                message: donation.message || '',
-                donationID: donation.donationID,
-                createdDateUTC: donation.createdDateUTC,
-                eventID: donation.eventID
-            })).filter(donation => donation.eventID === participantData.eventID);
-
-            // If we have previous data and participant hasn't changed, merge while respecting event ID
-            if (previousData?.donations && !hasParticipantChanged) {
-                const previousValidDonations = previousData.donations.filter(donation =>
-                    donation.eventID === participantData.eventID
-                );
-
-                // Track existing donations to avoid duplicates
-                const existingDonationIds = new Set(previousValidDonations.map(d => d.donationID));
-
-                // Add new donations to the newDonations array
-                const newDonations = validDonations.filter(donation =>
-                    !existingDonationIds.has(donation.donationID)
-                );
-
-                if (newDonations.length > 0) {
-                    processedData.newDonations = newDonations;
-                }
-
-                // Combine previous and new donations, removing duplicates
-                processedData.donations = [
-                    ...previousValidDonations,
-                    ...validDonations.filter(donation => !existingDonationIds.has(donation.donationID))
-                ];
-            } else {
-                // If participant changed or no previous donations, use only new donations
-                processedData.donations = validDonations;
-                if (validDonations.length > 0) {
-                    processedData.newDonations = validDonations;
-                }
-            }
-
-            // Sort donations by date
-            processedData.donations.sort((a, b) =>
-                new Date(b.createdDateUTC).getTime() - new Date(a.createdDateUTC).getTime()
-            );
-
-            // Store the updated data
-            await this.syncExternalData('extraLife', processedData);
-            return processedData;
-
-        } catch (err: unknown) {
-            const error = err as Error;
-            logger.error('Extra Life polling error:', {
-                name: error?.name || 'Unknown Error',
-                message: error?.message || 'No error message available',
-                stack: error?.stack || 'No stack trace available'
-            });
-            return null;
+            ].map(async url => {
+                const response = await this.request(url, { signal: controller.signal });
+                if (!response.ok) throw new Error(`Extra Life request failed (${response.status})`);
+                return response.json();
+            }));
+        } finally { controller.abort(); clearTimeout(timeout); }
+        if (!Array.isArray(incoming) || !Number.isFinite(Number(participant.sumDonations))) throw new Error('Extra Life returned invalid donation data');
+        const eventID = String(participant.eventID);
+        const previous = state.extraLife?.data;
+        const old = previous?.metadata.participantId === participantId && String(previous.metadata.eventID) === eventID ? previous.donations : [];
+        const donations = new Map(old.map(donation => [String(donation.donationID), donation]));
+        const newDonations: ProcessedExtraLifeData['donations'] = [];
+        for (const raw of incoming) {
+            const amount = logic.number(raw.amount, NaN);
+            if (String(raw.eventID) !== eventID || !Number.isFinite(amount) || amount <= 0 || !Number.isFinite(Date.parse(raw.createdDateUTC)) || raw.donationID == null) continue;
+            const donation = { amount: logic.round(amount), displayName: String(raw.displayName || 'Anonymous'), message: String(raw.message || ''), donationID: String(raw.donationID), createdDateUTC: raw.createdDateUTC, eventID };
+            if (!donations.has(donation.donationID)) newDonations.push(donation);
+            donations.set(donation.donationID, donation);
         }
+        return {
+            sumDonations: logic.round(Number(participant.sumDonations)),
+            fundraisingGoal: logic.number(participant.fundraisingGoal) > 0 ? logic.round(Number(participant.fundraisingGoal)) : state.config.donationGoal,
+            donations: [...donations.values()].sort((a, b) => Date.parse(b.createdDateUTC) - Date.parse(a.createdDateUTC)),
+            ...(newDonations.length ? { newDonations } : {}),
+            metadata: { lastUpdated: new Date().toISOString(), participantId, eventID }
+        };
     }
 
-    // Update the getExtraLifeData method to use proper typing:
-    async getExtraLifeData(): Promise<ProcessedExtraLifeData | undefined> {
-        try {
-            const goalState = await this.getGoalData();
-            return goalState?.extraLife?.data;
-        } catch {
-            return undefined;
-        }
+    private async requireGoal(id: string): Promise<GoalState> {
+        const state = await this.store.get(id);
+        if (!state?.config) throw new Error(`Goal '${id}' does not exist. Run its Advanced Goal Tracker effect first.`);
+        return state;
     }
 
+    async getGoalData(id = 'default'): Promise<GoalState | undefined> {
+        const state = await this.store.get(id);
+        if (!state?.config) return state;
+        state.active = this.isActive(state.goalId, state.uuid);
+        const period = state.config.streamElements.useStreamElements ? state.config.streamElements.summaryType : state.config.streamElements.localDonationsPeriod;
+        const filtered = filterDonations(state.localDonations?.data.donations || [], period || 'monthly');
+        state.localDonations = { data: { ...filtered, metadata: { lastUpdated: state.updatedAt } } };
+        if (state.config.streamElements.useStreamElements && state.config.streamElements.useLocalDonations && !state.streamElements) {
+            state.streamElements = { lastUpdated: state.updatedAt, data: { current: { donations: [], overall_total: { amount: 0, donation_count: 0 } }, metadata: { month: 0, year: 0, lastUpdated: state.updatedAt } } };
+        }
+        if (state.config.streamElements.useLocalDonations && state.streamElements) {
+            state.streamElements.data.current = mergeLocalDonations(state.streamElements.data.current, filtered);
+        }
+        return state;
+    }
+
+    async getLocalDonations(id = 'default'): Promise<LocalDonationData | undefined> { return (await this.store.get(id))?.localDonations; }
+
+    private async editLocal(id: string, edit: (data: LocalDonationData) => void): Promise<LocalDonationData> {
+        const result = await this.store.update(id, state => {
+            if (!state) throw new Error(`Goal '${id}' does not exist`);
+            const data = state.localDonations || emptyLocalData();
+            edit(data);
+            const grouped = groupDonations(data.data.donations.flatMap(donor => donor.individual_donations.map(donation => ({ name: donor.name, donation }))));
+            state.localDonations = { data: { ...grouped, metadata: { lastUpdated: new Date().toISOString() } } };
+            return { state, result: state.localDonations };
+        });
+        await this.sendUpdate(id);
+        return result;
+    }
+
+    async updateLocalDonation(donation: { name: string; amount: number }, id = 'default'): Promise<LocalDonationData> {
+        if (!donation.name?.trim()) throw new Error('Donor name is required');
+        if (!Number.isFinite(donation.amount) || logic.round(donation.amount) <= 0) throw new Error('Donation amount must be a finite positive amount of at least 0.01');
+        return this.editLocal(id, local => {
+            let donor = local.data.donations.find(item => item.name.toLowerCase() === donation.name.trim().toLowerCase());
+            if (!donor) { donor = { name: donation.name.trim(), individual_donations: [], total_amount: 0, total_donations: 0 }; local.data.donations.push(donor); }
+            donor.individual_donations.push({ id: randomUUID(), amount: logic.round(donation.amount), timestamp: new Date().toISOString(), donationType: 'local' });
+        });
+    }
+
+    async removeLocalDonation(identity: string, id = 'default'): Promise<LocalDonationData> {
+        return this.editLocal(id, local => {
+            for (const donor of local.data.donations) {
+                const index = donor.individual_donations.findIndex(donation => (donation.id || donation.timestamp) === identity);
+                if (index !== -1) { donor.individual_donations.splice(index, 1); return; }
+            }
+            throw new Error('Donation not found');
+        });
+    }
+
+    async resetUserDonations(name: string, id = 'default'): Promise<LocalDonationData> {
+        if (!name?.trim()) throw new Error('Donor name is required');
+        return this.editLocal(id, local => {
+            const index = local.data.donations.findIndex(donor => donor.name.toLowerCase() === name.trim().toLowerCase());
+            if (index === -1) throw new Error('Donor not found');
+            local.data.donations.splice(index, 1);
+        });
+    }
+
+    async resetLocalData(id = 'default'): Promise<void> { await this.editLocal(id, local => { local.data.donations = []; }); }
+
+    async resetStreamElementsData(id = 'default'): Promise<void> {
+        await this.store.update(id, state => { if (!state) throw new Error('Goal not found'); delete state.streamElements; return { state, result: undefined }; });
+        await this.sendUpdate(id);
+    }
+
+    async resetExtraLifeData(id = 'default'): Promise<void> {
+        await this.store.update(id, state => { if (!state) throw new Error('Goal not found'); delete state.extraLife; return { state, result: undefined }; });
+        await this.sendUpdate(id);
+    }
+
+    async hide(id = 'default'): Promise<void> {
+        const state = await this.requireGoal(id);
+        id = state.goalId;
+        this.pollers.stop(id);
+        this.activeGoals.delete(id);
+        const revision = await this.store.update(id, current => {
+            const next = (current!.revision || 0) + 1;
+            const state = { ...current!, revision: next };
+            delete state.active;
+            return { state, result: next };
+        });
+        this.publish({ type: 'remove', goalId: id, revision }, state.overlayInstance);
+    }
+
+    private async sendUpdate(id: string, newDonations?: ProcessedExtraLifeData['donations']): Promise<void> {
+        await this.sendGoalState(id, 'update', newDonations);
+    }
+
+    private async sendGoalState(id: string, type: 'show' | 'update', newDonations?: ProcessedExtraLifeData['donations'], expectedUuid?: string): Promise<void> {
+        const state = await this.getGoalData(id);
+        if (!state?.active || !this.isActive(state.goalId, state.uuid) || (expectedUuid && state.uuid !== expectedUuid)) return;
+        const config = clone(state.config);
+        // Browser overlays do not need account credentials.
+        config.streamElements.jwtToken = '';
+        delete config.content.branding.logo.default.resourcePath;
+        const data: GoalUpdateData = state.config.extraLife.useExtraLife ? {
+            extraLife: state.extraLife ? { ...state.extraLife.data, ...(newDonations?.length ? { newDonations } : {}) } : {
+                sumDonations: 0, fundraisingGoal: state.config.donationGoal, donations: [],
+                metadata: { lastUpdated: state.updatedAt, participantId: state.config.extraLife.participantId || '', eventID: '' }
+            }
+        } : state.config.streamElements.useStreamElements ? {
+            streamElements: state.streamElements?.data || { current: { donations: [], overall_total: { amount: 0, donation_count: 0 } }, metadata: { month: 0, year: 0, lastUpdated: state.updatedAt } }
+        } : { localDonations: state.localDonations || emptyLocalData() };
+        const common = { goalId: state.goalId, uuid: state.uuid, revision: state.revision || 0, overlayInstance: state.overlayInstance, data };
+        this.publish(type === 'show' ? { ...common, type, config } : { ...common, type }, state.overlayInstance);
+    }
 }
 
 export let goalManager: GoalManager;
 
-export function createGoalManager(path: string, modules: ScriptModules): GoalManager {
+export async function disposeGoalManager(): Promise<void> {
+    const previous = goalManager;
+    goalManager = undefined!;
+    await previous?.dispose();
+}
+
+export function createGoalManager(db: GoalDatabase, publish: (event: GoalOverlayEvent, overlay: string) => void): GoalManager {
     if (!goalManager) {
-        goalManager = new GoalManager(path, modules);
+        goalManager = new GoalManager(db, publish);
     }
     return goalManager;
 }

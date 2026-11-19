@@ -11,6 +11,7 @@
         /* Default Theme */
         :root {
             --progressColor: #a60000;
+            --progressGlowColor: rgba(166, 0, 0, 0.3);
             --trackColor: rgba(34, 34, 34, 0.95);
             --goalColor: #ffffff;
             --milestoneColor: #ffffff;
@@ -43,6 +44,7 @@
         /* Extra Life Theme */
         :root[data-theme="extraLife"] {
             --progressColor: #00B4FF;
+            --progressGlowColor: rgba(0, 180, 255, 0.3);
             --trackColor: rgba(27, 40, 56, 0.95);
             --goalColor: #ffffff;
             --milestoneColor: #ffffff;
@@ -66,7 +68,7 @@
             --infoBorderColor: rgba(227, 227, 227, 0.1);
             --animationHighlight: #00B4FF;
             --animationBackgroundColorOne: #1B2838;
-            --animationbackgroundColorTwo: #2A475E;
+            --animationBackgroundColorTwo: #2A475E;
             --animationBorder: #00B4FF;
             --animationText: #ffffff;
             --animationShadow: 0 2px 4px rgba(0, 0, 0, 0.2);
@@ -78,7 +80,7 @@
             padding: 0;
             background-color: transparent !important;
             overflow: hidden;
-            width: 475px;
+            width: var(--goal-width, 475px);
             display: flex !important;
             align-items: flex-start;
             justify-content: center;
@@ -261,7 +263,7 @@
         /* Progress Section */
         .progress-section {
             width: 100%;
-            margin: 2px;
+            margin: 2px 0;
         }
 
         .progress-title {
@@ -276,6 +278,9 @@
             border-radius: 12px 12px 0 0;
             margin: 0;
             width: 100%;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
 
         .progress-title.hidden {
@@ -332,9 +337,10 @@
             height: 100%;
             background: var(--progressColor);
             transition: width 1s cubic-bezier(0.4, 0, 0.2, 1);
-            box-shadow: 0 0 20px rgba(166, 0, 0, 0.3);
+            box-shadow: 0 0 20px var(--progressGlowColor);
             z-index: 2;
             border-radius: 25px;
+            overflow: hidden;
         }
 
         /* Progress Bar Animation */
@@ -347,7 +353,7 @@
             bottom: 0;
             background: linear-gradient(90deg,
                     rgba(255, 255, 255, 0) 0%,
-                    rgba(255, 255, 255, 0.1) 50%,
+                    rgba(255, 255, 255, 0.3) 50%,
                     rgba(255, 255, 255, 0) 100%);
             animation: shimmer 3s linear infinite;
         }
@@ -363,31 +369,49 @@
         }
 
         /* Status Labels */
-        #donationStatus {
+        #progressLabels {
             position: absolute;
-            right: 12px;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 0 12px 0 17px;
+            z-index: 3;
+            overflow: hidden;
+        }
+
+        #donationStatus {
+            flex: 0 0 auto;
+            min-width: 0;
             color: var(--goalColor);
             font-weight: 700;
-            top: 50%;
-            transform: translateY(-50%);
             text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
             font-size: 24px;
-            z-index: 3;
+            line-height: 1.2;
             text-align: right;
-            width: auto;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
 
         #milestoneLabel {
-            position: absolute;
-            left: 5px;
-            height: 100%;
-            padding: 4px 12px;
+            flex: 1 1 0%;
+            min-width: 0;
             color: var(--milestoneColor);
             font-size: 24px;
             font-weight: 700;
-            display: flex;
-            align-items: center;
-            z-index: 3;
+            line-height: 1.2;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        #milestoneLabel:empty {
+            display: none;
+        }
+
+        #milestoneLabel:empty+#donationStatus {
+            margin-left: auto;
         }
 
         /* Info Section Items */
@@ -508,6 +532,16 @@
         }
 
         /* Track Alignment Styles */
+        #donationAnimation .animation-header {
+            background: var(--animation-header-background);
+            border-radius: 8px;
+        }
+
+        #donationAnimation .animation-subheader {
+            background: var(--animation-subheader-background);
+            border-radius: 8px;
+        }
+
         .goalWidget.align-to-track {
             background-color: transparent;
             box-shadow: none;
@@ -530,6 +564,11 @@
             width: 100%;
             margin: 0;
             border-radius: 16px;
+        }
+
+        .goalWidget.align-to-track .countdown,
+        .goalWidget.align-to-track .info-section,
+        .goalWidget.align-to-track .info-section>div {
             background: var(--trackColor);
         }
 
@@ -594,7 +633,6 @@
         }
 
         .animation-subheader {
-            background: linear-gradient(135deg, var(--animationBackgroundColorOne), var(--animationBackgroundColorTwo));
             padding: 12px 16px;
             border-radius: 8px;
             margin-top: 8px;
@@ -675,6 +713,23 @@
             order: 3;
         }
 
+        /* Keep secondary sections at their original content width within the resizing widget. */
+        .goalWidget.fixed-section-widths>.countdown,
+        .goalWidget.fixed-section-widths>.info-section {
+            width: min(100%, var(--goal-section-width));
+            margin-left: auto;
+            margin-right: auto;
+            align-self: center;
+        }
+
+        .goalWidget.fixed-section-widths .time {
+            max-width: 100%;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            vertical-align: middle;
+        }
+
         /* When info section is below the progress bar, add border to top */
         .goalWidget.info-below #donationAnimation {
             border-top: 2px solid var(--animationBorder);
@@ -712,8 +767,10 @@
                 <div id="progressBackground"></div>
                 <div id="progressTrack">
                     <div id="progressBar"></div>
-                    <div id="milestoneLabel" class="info-item"></div>
-                    <div id="donationStatus" class="info-item">$0/$0</div>
+                    <div id="progressLabels">
+                        <div id="milestoneLabel" class="info-item"></div>
+                        <div id="donationStatus" class="info-item">$0/$0</div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -727,9 +784,17 @@
     </div>
 
     <script>
-        /* Main Configuration Object */
         const CONFIG = {};
-
+        function paintGoal(goal, total, label) {
+            const target = GoalLogic.number(goal);
+            const amount = GoalLogic.number(total);
+            const bar = document.getElementById('progressBar');
+            const percentage = GoalLogic.percentage(amount, target);
+            bar.style.width = `${target > 0 ? Math.max(0, Math.min(100, amount / target * 100)) : 0}%`;
+            const currency = CONFIG.content.templates[CONFIG.extraLife.useExtraLife ? 'extraLife' : 'default'].donations.currencySymbol || '$';
+            GoalLayout.setProgressText(`${currency}${GoalLogic.money(amount)}/${currency}${GoalLogic.money(target)}`,
+                label || (CONFIG.display.progressBar.showPercentage ? `${percentage}%` : ''));
+        }
         /* Templates */
         const TEMPLATES = {
             animation: {
@@ -769,94 +834,27 @@
          * @throws {Error} When data is invalid
          */
         function handleIncomingData(data) {
-            if (CONFIG.display.progressBar.hideBeforeStreamStartTime && !hasStreamStarted()) return;
-
-            // STORE TOTALS FOR MILESTONE CYCLING
-            if (CONFIG.extraLife.useExtraLife) {
-                State.currentDonationTotal = data.sumDonations || 0;
-                State.extraLifeGoal = data.fundraisingGoal || CONFIG.donationGoal;
-            } else {
-                const donationData = data?.overall_total;
-                if (donationData) {
-                    if (CONFIG.streamElements.useStreamElements) {
-                        State.streamElementsTotal = Number(donationData.amount);
-                    } else {
-                        State.localTotal = Number(donationData.amount);
-                    }
-                }
+            if (!data) return;
+            const total = GoalLogic.number(CONFIG.extraLife.useExtraLife ? data.sumDonations : data.overall_total?.amount, NaN);
+            if (!Number.isFinite(total) || total < 0) { console.warn('Ignoring invalid goal total'); return; }
+            State.total = total;
+            State.donations = Array.isArray(data.donations) ? data.donations : [];
+            State.donorIndex = State.donations.length ? State.donorIndex % State.donations.length : 0;
+            State.fundraisingGoal = CONFIG.extraLife.useExtraLife ? GoalLogic.number(data.fundraisingGoal, CONFIG.donationGoal) : CONFIG.donationGoal;
+            State.currentDonationTotal = total;
+            State.extraLifeGoal = State.fundraisingGoal;
+            State.streamElementsTotal = total;
+            State.localTotal = total;
+            State.largestDonation = { amount: 0, displayName: CONFIG.content.templates[CONFIG.extraLife.useExtraLife ? 'extraLife' : 'default'].donations.defaultDonorName };
+            if (CONFIG.extraLife.useExtraLife) updateDonorInfo(State.donations);
+            else {
+                updateRecentDonationDisplay(State.donations[State.donorIndex]);
+                updateLargestDonationDisplay();
             }
-
-            // SKIP PROGRESS BAR IF CYCLING ENABLED 
-            if (CONFIG.mode.milestoneCycle && CONFIG.content.milestones && CONFIG.content.milestones.length > 0) {
-                // Still update donor info, but skip progress bar updates
-                if (CONFIG.extraLife.useExtraLife) {
-                    State.donations = data.donations || [];
-                    updateDonorInfo(State.donations);
-                    if (data.newDonations?.length > 0) {
-                        data.newDonations.forEach(donation => {
-                            showNewDonation(donation);
-                        });
-                    }
-                } else if (data?.donations?.length > 0) {
-                    State.donations = data.donations;
-                    updateRecentDonationDisplay(data.donations[0]);
-                    updateLargestDonationDisplay();
-                }
-                return;
-            }
-
-            if (CONFIG.extraLife.useExtraLife) {
-                return Promise.resolve().then(() => {
-                    // Extract the current data
-                    const elData = data;
-
-                    // Update state with Extra Life data
-                    State.total = elData.sumDonations || 0;
-                    State.fundraisingGoal = elData.fundraisingGoal || CONFIG.donationGoal;
-                    State.donations = elData.donations || [];
-
-                    // Update displays
-                    updateProgressBar(State.fundraisingGoal, State.total);
-                    updateDonorInfo(State.donations);
-
-                    // Handle new donations if any
-                    if (elData.newDonations?.length > 0) {
-                        elData.newDonations.forEach(donation => {
-                            showNewDonation(donation);
-                        });
-                    }
-                })
-                    .catch(error => {
-                        console.error('ExtraLife fetch error:', error);
-                    });
-            } else {
-                // Handle both StreamElements and local donations the same way
-                return Promise.resolve().then(() => {
-                    // Extract the current data - both StreamElements and local will have this structure
-                    const donationData = data?.overall_total;
-
-                    if (donationData) {
-                        // Update the State and displays with explicit number conversion
-                        const total = Number(donationData.amount);
-                        const donationGoal = Number(donationData.goal) || CONFIG.donationGoal;
-
-                        // Force update progress bar with the new total
-                        updateProgressBar(donationGoal, total);
-                        State.total = total;
-                        State.fundraisingGoal = donationGoal;
-
-                        // Update donations display if we have donation data
-                        if (data.donations?.length > 0) {
-                            State.donations = data.donations;
-                            updateRecentDonationDisplay(data.donations[0]);
-                            updateLargestDonationDisplay();
-                        }
-                    }
-                })
-                    .catch(error => {
-                        console.error('Donation data fetch error:', error);
-                    });
-            }
+            if (State.refreshCycle) State.refreshCycle();
+            else updateProgressBar(State.fundraisingGoal, total);
+            if (CONFIG.extraLife.useExtraLife && data.newDonations?.length) data.newDonations.forEach(showNewDonation);
+            updateSectionVisibility();
         }
 
         /**
@@ -866,25 +864,20 @@
          * @description Sets CSS variables for colors and updates theme attribute
          */
         function applyThemeColors() {
-            const type = (CONFIG.extraLife.useExtraLife && CONFIG.extraLife.useExtraLifeColors) ? 'extraLife' : 'default';
+            const themed = CONFIG.extraLife.useExtraLife && CONFIG.extraLife.useExtraLifeColors;
+            const theme = themed ? GoalLogic.extraLifeTheme() : CONFIG.content.templates.default;
             const root = document.documentElement;
-
-            // Apply all properties directly
-            const themeProperties = {
-                ...CONFIG.content.templates[type].colors,
-                ...CONFIG.content.templates[type].animation
-            };
-
-            Object.entries(themeProperties).forEach(([key, value]) => {
-                root.style.setProperty(`--${key}`, value);
-            });
-
-            // Only set data-theme attribute if both Extra Life settings are enabled
-            if (CONFIG.extraLife.useExtraLife && CONFIG.extraLife.useExtraLifeColors) {
-                root.setAttribute('data-theme', 'extraLife');
-            } else {
-                root.removeAttribute('data-theme');
+            if (themed) root.setAttribute('data-theme', 'extraLife'); else root.removeAttribute('data-theme');
+            for (const [key, value] of Object.entries({ ...theme.colors, ...theme.animation })) {
+                if (['animationBackgroundStyle', 'headerBackground', 'subheaderBackground'].includes(key)) continue;
+                const rowBackground = ['infoDonorBackground', 'infoLargestBackground', 'infoAdditionalBackground'].includes(key);
+                if (value == null || value === '' || (rowBackground && !CONFIG.mode.separateInfoColors)) root.style.removeProperty(`--${key}`);
+                else root.style.setProperty(`--${key}`, String(value));
             }
+            const backgrounds = GoalLogic.animationBackgrounds(CONFIG.content.templates.default.animation, themed);
+            root.style.setProperty('--animation-header-background', GoalLogic.animationBackgroundCSS(backgrounds.headerBackground));
+            root.style.setProperty('--animation-subheader-background', GoalLogic.animationBackgroundCSS(backgrounds.subheaderBackground));
+            root.style.setProperty('--container-opacity', String(CONFIG.display.progressBar.opacity ?? 1));
         }
 
         /* Helper Functions */
@@ -976,7 +969,7 @@
         // Start initialization process
         ensureInitialization();
 
-        if (CONFIG.extraLife.useExtraLife || CONFIG.streamElements.useStreamElements || (CONFIG.mode.showInfoSection && CONFIG.mode.useCustomDonationData)) {
+        if (CONFIG.mode.showInfoSection) {
             initializeRotation();
         }
 
@@ -1252,159 +1245,41 @@
          * Controls animation timing
         */
         function toggleDisplay() {
-            const countdownContent = document.querySelector('.countdown-content');
-            const logo = document.querySelector('.logo');
-            const infoSection = document.querySelector('.info-section');
-            const animationDiv = document.getElementById('donationAnimation');
             const countdown = document.querySelector('.countdown');
-            let cycleCount = 0;
-
-            function initializeState() {
-                // Start with logo hidden
-                logo.style.display = 'none';
-                logo.classList.add('hidden');
-
-                // Set countdown state
-                if (CONFIG.display.countdown.showCountdown) {
-                    countdown.style.display = 'block';
-                    if (CONFIG.display.countdown.countdownCycle) {
-                        countdown.classList.add('roll-hidden');
-                        countdownContent.classList.remove('visible');
-                        countdownContent.style.display = 'none';
-                    } else {
-                        countdown.classList.remove('roll-hidden');
-                        countdownContent.classList.add('visible');
-                        countdownContent.style.display = 'block';
-                    }
-                } else {
-                    countdown.style.display = 'none';
-                    countdownContent.style.display = 'none';
-                }
-
-                // Set info section state
-                if (!CONFIG.mode.showInfoSection) {
-                    infoSection.style.display = 'none';
-                } else if (CONFIG.mode.infoSectionCycle) {
-                    infoSection.classList.add('hidden');
-                } else {
-                    // When not cycling, start visible
-                    infoSection.classList.remove('hidden');
-                }
-
-                // Reset animation div
-                animationDiv.style.display = 'none';
-            }
-
-            function handleCountdownCycle() {
-                if (CONFIG.display.countdown.showCountdown) {
-                    if (CONFIG.display.countdown.countdownCycle) {
-                        countdown.classList.remove('roll-hidden');
-                        countdownContent.style.display = 'block';
-                        countdownContent.classList.add('visible');
-                    }
-
-                    setTimeout(() => {
-                        if (CONFIG.mode.showLogoAnimation) {
-                            countdownContent.classList.remove('visible');
-                            countdownContent.style.display = 'none';
-                            logo.classList.remove('hidden');
-                            logo.style.display = 'block';
-
-                            setTimeout(() => {
-                                logo.classList.add('hidden');
-                                logo.style.display = 'none';
-                                countdownContent.style.display = 'block';
-                                countdownContent.classList.add('visible');
-
-                                setTimeout(() => {
-                                    if (CONFIG.display.countdown.countdownCycle) {
-                                        countdown.classList.add('roll-hidden');
-                                    }
-                                    setTimeout(startNextCycle, toMS(CONFIG.timing.cycleDelay));
-                                }, toMS(CONFIG.timing.animationPostTiming));
-                            }, toMS(CONFIG.timing.animationDisplay));
-                        } else {
-                            setTimeout(() => {
-                                if (CONFIG.display.countdown.countdownCycle) {
-                                    countdown.classList.add('roll-hidden');
-                                }
-                                setTimeout(startNextCycle, toMS(CONFIG.timing.cycleDelay));
-                            }, toMS(CONFIG.timing.animationDisplay + CONFIG.timing.animationPostTiming));
-                        }
-                    }, toMS(CONFIG.timing.animationPreTiming));
-                }
-            }
-
-            function handleInfoCycle() {
-                if (!CONFIG.mode.showInfoSection) {
-                    handleCountdownCycle();
-                    return;
-                }
-
-                infoSection.classList.remove('hidden');
-
+            const content = document.querySelector('.countdown-content');
+            const logo = document.querySelector('.logo');
+            const info = document.querySelector('.info-section');
+            const animation = document.getElementById('donationAnimation');
+            let turn = 0;
+            const hideLogo = () => { logo.classList.add('hidden'); logo.style.display = 'none'; content.classList.add('visible'); content.style.display = 'block'; };
+            hideLogo();
+            countdown.classList.toggle('roll-hidden', !!CONFIG.display.countdown.countdownCycle);
+            info.classList.toggle('hidden', !!CONFIG.mode.infoSectionCycle);
+            function begin() {
+                const hasCountdown = CONFIG.display.countdown.showCountdown;
+                const hasInfo = CONFIG.mode.showInfoSection;
+                if (!hasCountdown && !hasInfo) return;
+                const alternate = hasCountdown && hasInfo && CONFIG.display.countdown.countdownCycle;
+                const showCountdown = hasCountdown && (!alternate || turn % 2 === 0);
+                const showInfo = hasInfo && (!alternate || turn % 2 === 1);
+                turn++;
+                if (showCountdown) countdown.classList.remove('roll-hidden');
+                if (showInfo) info.classList.remove('hidden');
                 setTimeout(() => {
-                    if (CONFIG.mode.showDonationAnimation) {
-                        animationDiv.innerHTML = TEMPLATES.animation.getTemplate();
-                        animationDiv.style.display = 'flex';
-                        requestAnimationFrame(() => {
-                            animationDiv.classList.add('show');
-                        });
-
+                    if (showCountdown && CONFIG.mode.showLogoAnimation) { content.classList.remove('visible'); content.style.display = 'none'; logo.classList.remove('hidden'); logo.style.display = 'block'; }
+                    if (showInfo && CONFIG.mode.showDonationAnimation) { animation.innerHTML = TEMPLATES.animation.getTemplate(); animation.style.display = 'flex'; animation.classList.add('show'); }
+                    setTimeout(() => {
+                        hideLogo(); animation.classList.remove('show');
                         setTimeout(() => {
-                            animationDiv.classList.remove('show');
-                            setTimeout(() => {
-                                animationDiv.style.display = 'none';
-                                if (CONFIG.mode.infoSectionCycle) {
-                                    infoSection.classList.add('hidden');
-                                }
-                                setTimeout(startNextCycle, toMS(CONFIG.timing.cycleDelay));
-                            }, toMS(CONFIG.timing.transition + CONFIG.timing.animationPostTiming));
-                        }, toMS(CONFIG.timing.animationDisplay));
-                    } else {
-                        setTimeout(() => {
-                            if (CONFIG.mode.infoSectionCycle) {
-                                infoSection.classList.add('hidden');
-                            }
-                            setTimeout(startNextCycle, toMS(CONFIG.timing.cycleDelay));
-                        }, toMS(CONFIG.timing.animationDisplay + CONFIG.timing.animationPostTiming));
-                    }
+                            animation.style.display = 'none';
+                            if (CONFIG.display.countdown.countdownCycle) countdown.classList.add('roll-hidden');
+                            if (CONFIG.mode.infoSectionCycle) info.classList.add('hidden');
+                            setTimeout(begin, toMS(CONFIG.timing.cycleDelay));
+                        }, toMS(CONFIG.timing.animationPostTiming + CONFIG.timing.transition));
+                    }, toMS(CONFIG.timing.animationDisplay));
                 }, toMS(CONFIG.timing.animationPreTiming));
             }
-
-            function startNextCycle() {
-                if (!CONFIG.display.countdown.showCountdown && !CONFIG.mode.showInfoSection) {
-                    return;
-                }
-
-                if (!CONFIG.display.countdown.showCountdown && CONFIG.mode.showInfoSection) {
-                    handleInfoCycle();
-                    return;
-                }
-
-                if (!CONFIG.display.countdown.countdownCycle) {
-                    if (!CONFIG.mode.showInfoSection) {
-                        handleCountdownCycle();
-                    } else {
-                        handleCountdownCycle();
-                        handleInfoCycle();
-                    }
-                    return;
-                }
-
-                cycleCount++;
-                if (cycleCount % 2 === 1) {
-                    handleCountdownCycle();
-                } else if (CONFIG.mode.showInfoSection) {
-                    handleInfoCycle();
-                } else {
-                    handleCountdownCycle();
-                }
-            }
-
-            // Start the cycle
-            initializeState();
-            setTimeout(startNextCycle, toMS(CONFIG.timing.cycleDelay));
+            setTimeout(begin, toMS(CONFIG.timing.cycleDelay));
         }
 
         /**
@@ -1489,44 +1364,13 @@
          * across different data sources (Extra Life, StreamElements, Custom)
          */
         function initializeRotation() {
-            let rotationTimer = null;
-
-            // Clear any existing rotation timer
-            if (rotationTimer) {
-                clearInterval(rotationTimer);
-                rotationTimer = null;
-            }
-
-            let currentDonationIndex = 0;
-
-            // Function to perform the rotation
             function rotate() {
-                if (CONFIG.extraLife.useExtraLife) {
-                    // Handle Extra Life rotation
-                    if (State.donations.length > 0) {
-                        State.donorIndex = (State.donorIndex + 1) % State.donations.length;
-                        updateRecentDonationDisplay(State.donations[State.donorIndex]);
-                    }
-                } else if (CONFIG.streamElements.useStreamElements) {
-                    // Handle Stream Elements rotation
-                    if (State.donations && State.donations.length > 0) {
-                        State.donorIndex = (State.donorIndex + 1) % State.donations.length;
-                        updateRecentDonationDisplay(State.donations[State.donorIndex]);
-                    }
-                }
+                if (!State.donations.length) return;
+                State.donorIndex = (State.donorIndex + 1) % State.donations.length;
+                updateRecentDonationDisplay(State.donations[State.donorIndex]);
             }
-
-            // Do an immediate rotation if visible
-            rotate();
-
-            // Set up the interval based on the appropriate configuration
-            const interval = CONFIG.extraLife.useExtraLife
-                ? toMS(CONFIG.extraLife.extralifeDonorRotationInterval)
-                : CONFIG.streamElements.useStreamElements
-                    ? toMS(CONFIG.timing.customDonorRotationInterval)
-                    : toMS(CONFIG.timing.customDonorRotationInterval);
-
-            rotationTimer = setInterval(rotate, interval);
+            const interval = CONFIG.extraLife.useExtraLife ? CONFIG.extraLife.extralifeDonorRotationInterval : CONFIG.timing.customDonorRotationInterval;
+            setInterval(rotate, Math.max(1, interval) * 1000);
         }
 
         /**
@@ -1674,86 +1518,11 @@
          * Manages goal text displays
         */
         function updateProgressBar(goal, total) {
-            // Early validation of inputs
-            if (goal === null || goal === undefined || total === null || total === undefined) {
-                console.warn('Invalid inputs to updateProgressBar:', { goal, total });
-                return;
-            }
-
-            // Convert inputs to numbers and validate
-            let currentGoal = Number(goal);
-            let currentTotal = Number(total);
-
-            if (isNaN(currentGoal) || isNaN(currentTotal)) {
-                console.warn('Non-numeric inputs to updateProgressBar:', { goal, total });
-                return;
-            }
-
-            // Get currency symbol from config
-            const currencySymbol = CONFIG.content.templates[CONFIG.extraLife.useExtraLife ? 'extraLife' : 'default'].donations.currencySymbol || '$';
-
-            // Handle milestones if enabled
-            if (CONFIG.mode.useMilestonesAsGoals && !CONFIG.extraLife.useExtraLife) {
-                const nextMilestone = findNextMilestoneGoal(currentTotal);
-                if (nextMilestone) {
-                    currentGoal = Number(nextMilestone.amount);
-                } else {
-                    const lastValidMilestone = [...CONFIG.content.milestones]
-                        .reverse()
-                        .find(m => Number(m.amount) > 0);
-                    currentGoal = lastValidMilestone ? Number(lastValidMilestone.amount) : currentGoal;
-                }
-            }
-
-            // Calculate percentage with validation
-            const percentage = Math.min((currentTotal / currentGoal) * 100, 100);
-            if (isNaN(percentage)) {
-                console.warn('Invalid percentage calculation:', { currentTotal, currentGoal });
-                return;
-            }
-
-            // Get DOM elements
-            const progressBar = document.getElementById('progressBar');
-            const donationStatus = document.getElementById('donationStatus');
-            const milestoneLabel = document.getElementById('milestoneLabel');
-
-            if (!progressBar || !donationStatus || !milestoneLabel) {
-                console.warn('Required DOM elements not found');
-                return;
-            }
-
-            // Update progress bar width
-            progressBar.style.width = `${percentage}%`;
-
-            // Format numbers safely
-            const formatNumber = (num) => {
-                try {
-                    const parsedNum = Number(num);
-                    return Number.isInteger(parsedNum) ? parsedNum.toString() : parsedNum.toFixed(2);
-                } catch (error) {
-                    console.warn('Error formatting number:', error);
-                    return '0';
-                }
-            };
-
-            // Update donation status
-            donationStatus.innerText = `${currencySymbol}${formatNumber(currentTotal)}/${currencySymbol}${formatNumber(currentGoal)}`;
-
-            // Clear milestone label
-            milestoneLabel.innerText = '';
-
-            // Handle milestone/percentage display
-            const showPercentage = CONFIG.display.progressBar.showPercentage;
-            const hasMilestones = CONFIG.content.milestones && CONFIG.content.milestones.length > 0;
-
-            if (showPercentage && !hasMilestones) {
-                milestoneLabel.innerText = `${Math.floor(percentage)}%`;
-                return;
-            }
-
-            if (hasMilestones) {
-                updateMilestones(currentTotal);
-            }
+            const target = GoalLogic.activeGoal(goal, total, CONFIG.content.milestones, CONFIG.mode.useMilestonesAsGoals && !CONFIG.extraLife.useExtraLife);
+            const milestone = GoalLogic.nextMilestone(CONFIG.content.milestones, total);
+            const currency = CONFIG.content.templates[CONFIG.extraLife.useExtraLife ? 'extraLife' : 'default'].donations.currencySymbol || '$';
+            const label = milestone ? (CONFIG.mode.useMilestonesAsGoals && !CONFIG.extraLife.useExtraLife ? milestone.title : `${milestone.title}: ${currency}${GoalLogic.money(milestone.amount)}`) : '';
+            paintGoal(target, total, label);
         }
 
         /**
@@ -1763,38 +1532,7 @@
          * @description Updates milestone text based on current progress
          * Handles different display modes for Extra Life vs custom milestones
          */
-        function updateMilestones(total) {
-            const milestoneLabel = document.getElementById('milestoneLabel');
-            const currencySymbol = CONFIG.content.templates[CONFIG.extraLife.useExtraLife ? 'extraLife' : 'default'].donations.currencySymbol || '$';
-
-            if (!CONFIG.content.milestones || CONFIG.content.milestones.length === 0) {
-                return;
-            }
-
-            // If Extra Life or not using milestones as goals, show title and amount
-            if (CONFIG.extraLife.useExtraLife || !CONFIG.mode.useMilestonesAsGoals) {
-                for (let milestone of CONFIG.content.milestones) {
-                    if (total < milestone.amount) {
-                        milestoneLabel.innerText = `${milestone.title}: ${currencySymbol}${milestone.amount}`;
-                        return;
-                    }
-                }
-
-                const lastMilestone = CONFIG.content.milestones[CONFIG.content.milestones.length - 1];
-                milestoneLabel.innerText = `${lastMilestone.title}: ${currencySymbol}${lastMilestone.amount}`;
-            } else {
-                // If using milestones as goals, only show title
-                for (let milestone of CONFIG.content.milestones) {
-                    if (total < milestone.amount) {
-                        milestoneLabel.innerText = milestone.title;
-                        return;
-                    }
-                }
-
-                const lastMilestone = CONFIG.content.milestones[CONFIG.content.milestones.length - 1];
-                milestoneLabel.innerText = lastMilestone.title;
-            }
-        }
+        function updateMilestones(total) { updateProgressBar(State.fundraisingGoal, total); }
 
         /**
          * Initializes milestone cycling if enabled
@@ -1803,207 +1541,25 @@
          * Supports two modes: 'all' (all milestones) or 'next' (next milestone only)
          */
         function initializeMilestoneCycle() {
-            if (!CONFIG.mode.milestoneCycle || !CONFIG.content.milestones || CONFIG.content.milestones.length === 0) {
-                return;
+            if (!CONFIG.mode.milestoneCycle || !GoalLogic.milestones(CONFIG.content.milestones).length || State.refreshCycle) return;
+            let current = 'main';
+            let previous = [];
+            function render(advance) {
+                const total = State.total;
+                let items = GoalLogic.milestones(CONFIG.content.milestones);
+                if (CONFIG.mode.milestoneCycleMode === 'next') items = items.filter(item => item.amount > total).slice(0, 1);
+                else if (CONFIG.mode.showCompletedMilestones === false) items = items.filter(item => item.amount > total);
+                const stops = ['main', ...items.map(item => `milestone:${item.index}`)];
+                current = GoalLogic.cycleKey(current, previous, stops, advance);
+                previous = stops;
+                const item = items.find(item => `milestone:${item.index}` === current);
+                const currency = CONFIG.content.templates[CONFIG.extraLife.useExtraLife ? 'extraLife' : 'default'].donations.currencySymbol || '$';
+                const label = item ? (CONFIG.mode.useMilestonesAsGoals ? item.title : `${item.title}: ${currency}${GoalLogic.money(item.amount)}`) : '';
+                paintGoal(item ? item.amount : State.fundraisingGoal, total, label);
             }
-
-            let milestoneTimer = null;
-            const cycleMode = CONFIG.mode.milestoneCycleMode || 'next';
-
-            function rotateMilestone() {
-                // Get current donation amount
-                let currentTotal = 0;
-                if (CONFIG.extraLife.useExtraLife) {
-                    currentTotal = State.currentDonationTotal || 0;
-                } else if (CONFIG.streamElements.useStreamElements) {
-                    currentTotal = State.streamElementsTotal || 0;
-                } else {
-                    currentTotal = State.localTotal || 0;
-                }
-                const showCompletedMilestones = CONFIG.mode.showCompletedMilestones !== false;
-
-                if (cycleMode === 'next') {
-                    // NEXT MILESTONE ONLY MODE: Toggle between main goal and next milestone
-
-                    // Find the next uncompleted milestone
-                    const nextMilestone = CONFIG.content.milestones.find(m => currentTotal < m.amount);
-
-                    if (!nextMilestone) {
-                        // All milestones completed - just show main goal
-                        updateCycledGoalDisplay(-1, currentTotal);
-                        return;
-                    }
-
-                    // Find the index of the next milestone
-                    const nextMilestoneIndex = CONFIG.content.milestones.indexOf(nextMilestone);
-
-                    // Toggle between -1 (main goal) and the next milestone index
-                    if (State.milestoneIndex === -1) {
-                        State.milestoneIndex = nextMilestoneIndex;
-                    } else {
-                        State.milestoneIndex = -1;
-                    }
-
-                    updateCycledGoalDisplay(State.milestoneIndex, currentTotal);
-
-                } else {
-                    // ALL MILESTONES MODE: Cycle through available milestones + main goal
-                    const milestoneEntries = CONFIG.content.milestones
-                        .map((milestone, index) => ({ milestone, index }))
-                        .filter(({ milestone }) => {
-                            if (showCompletedMilestones) {
-                                return true;
-                            }
-                            const milestoneAmount = Number(milestone.amount);
-                            return Number.isNaN(milestoneAmount) || currentTotal < milestoneAmount;
-                        });
-
-                    if (milestoneEntries.length === 0) {
-                        State.milestoneIndex = -1;
-                        updateCycledGoalDisplay(-1, currentTotal);
-                        return;
-                    }
-
-                    const totalStops = milestoneEntries.length + 1; // +1 for main goal
-                    State.milestoneIndex = (State.milestoneIndex + 1) % totalStops;
-
-                    // Adjust to start at -1 (main goal)
-                    const adjustedIndex = State.milestoneIndex - 1;
-
-                    if (adjustedIndex === -1) {
-                        updateCycledGoalDisplay(-1, currentTotal);
-                        return;
-                    }
-
-                    const nextIndex = milestoneEntries[adjustedIndex]?.index ?? -1;
-                    updateCycledGoalDisplay(nextIndex, currentTotal);
-                }
-            }
-
-            // Initial display
-            rotateMilestone();
-
-            // Set up interval
-            const interval = toMS(CONFIG.timing.cycleDelay);
-            milestoneTimer = setInterval(rotateMilestone, interval);
-        }
-
-        /**
-         * Updates goal display during milestone cycle
-         * @function
-         * @param {number} milestoneIndex - Index of milestone to display (-1 for main goal)
-         * @param {number} currentTotal - Current donation amount
-         * @description Shows either main goal or specific milestone based on cycle position
-         */
-        function updateCycledGoalDisplay(milestoneIndex, currentTotal) {
-            const donationStatus = document.getElementById('donationStatus');
-            const milestoneLabel = document.getElementById('milestoneLabel');
-            const progressBar = document.getElementById('progressBar');
-            const currencySymbol = CONFIG.content.templates[CONFIG.extraLife.useExtraLife ? 'extraLife' : 'default'].donations.currencySymbol || '$';
-
-            let currentGoal;
-            let milestoneText = '';
-
-            if (milestoneIndex === -1) {
-                // Show main goal
-                if (CONFIG.extraLife.useExtraLife) {
-                    currentGoal = State.extraLifeGoal || CONFIG.donationGoal;
-                } else {
-                    currentGoal = CONFIG.donationGoal;
-                }
-                milestoneText = ''; // Clear milestone text when showing main goal
-            } else {
-                // Show specific milestone
-                const milestone = CONFIG.content.milestones[milestoneIndex];
-                if (milestone) {
-                    currentGoal = milestone.amount;
-
-                    // Display milestone title
-                    if (CONFIG.mode.useMilestonesAsGoals) {
-                        milestoneText = milestone.title;
-                    } else {
-                        milestoneText = `${milestone.title}: ${currencySymbol}${milestone.amount}`;
-                    }
-                } else {
-                    // Fallback if milestone doesn't exist
-                    currentGoal = CONFIG.donationGoal;
-                }
-            }
-
-            // Calculate percentage
-            const percentage = Math.min((currentTotal / currentGoal) * 100, 100);
-
-            // Update progress bar
-            progressBar.style.width = `${percentage}%`;
-
-            // Format numbers
-            const formatNumber = (num) => {
-                try {
-                    const parsedNum = Number(num);
-                    return Number.isInteger(parsedNum) ? parsedNum.toString() : parsedNum.toFixed(2);
-                } catch (error) {
-                    return '0';
-                }
-            };
-
-            // Update donation status
-            donationStatus.innerText = `${currencySymbol}${formatNumber(currentTotal)}/${currencySymbol}${formatNumber(currentGoal)}`;
-
-            // Update milestone label
-            if (milestoneText) {
-                milestoneLabel.innerText = milestoneText;
-            } else if (CONFIG.display.progressBar.showPercentage) {
-                milestoneLabel.innerText = `${Math.floor(percentage)}%`;
-            } else {
-                milestoneLabel.innerText = '';
-            }
-        }
-
-        /**
-         * Finds the next milestone goal based on current amount
-         * @function
-         * @param {number} currentAmount - Current donation total
-         * @returns {Object|null} Next milestone or null if none available
-         * @description Determines the next milestone target above current amount
-         */
-        function findNextMilestoneGoal(currentAmount) {
-            for (let milestone of CONFIG.content.milestones) {
-                if (milestone.amount > currentAmount && milestone.amount > 0) {
-                    return milestone;
-                }
-            }
-            return null;
-        }
-
-        /**
-         * Checks for new donations in current data
-         * @function
-         * @param {Array} currentDonations - Latest donation data
-         * @description Compares current donations with stored state
-         * Identifies and processes new donations
-         */
-        function checkNewDonations(currentDonations) {
-            if (!State.donations.length) {
-                State.donations = currentDonations;
-                return;
-            }
-
-            const newDonations = currentDonations.filter(donation => {
-                return !State.donations.some(lastDonation =>
-                    lastDonation.donationID === donation.donationID ||
-                    (lastDonation.displayName === donation.displayName &&
-                        lastDonation.amount === donation.amount &&
-                        lastDonation.createdDateUTC === donation.createdDateUTC)
-                );
-            });
-
-            if (newDonations.length > 0) {
-                newDonations.forEach(donation => {
-                    showNewDonation(donation);
-                });
-            }
-
-            State.donations = currentDonations;
+            State.refreshCycle = () => render(false);
+            render(false);
+            setInterval(() => render(true), Math.max(1, CONFIG.timing.cycleDelay) * 1000);
         }
 
         /**

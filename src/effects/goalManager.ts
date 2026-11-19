@@ -1,18 +1,19 @@
-import { Firebot } from "@crowbartools/firebot-custom-scripts-types";
+import type { EffectType } from "@crowbartools/firebot-types";
 import { logger } from "../logger";
 import { LocalUpdateEffectModel } from "../types/types";
 import goalManagerTemplate from "../templates/goalManager-Template.html";
-import { goalManager } from "../utility/goal-manager";
+import { runGoalOperation } from "../plugin-runtime";
+import { goalId } from "../utility/goal-store";
 
 export function goalTrackerManagerEffectType() {
-    const localUpdateEffectType: Firebot.EffectType<LocalUpdateEffectModel> = {
+    const localUpdateEffectType: EffectType<LocalUpdateEffectModel> = {
         definition: {
             id: "msgg:goaltracker-local-update",
             name: "Advanced Goal Manager",
             description: "Data Manager for the Advanced Goal Tracker",
             icon: "fad fa-database",
             categories: ["overlay"],
-            dependencies: [],
+            dependencies: {},
             triggers: {
                 command: true,
                 custom_script: true,
@@ -21,15 +22,32 @@ export function goalTrackerManagerEffectType() {
             }
         },
         optionsTemplate: goalManagerTemplate,
-        onTriggerEvent: async (event) => {
+        optionsController: ($scope: any, backendCommunicator: any) => {
+            if (!$scope.effect.goalId) $scope.effect.goalId = 'default';
+            if (!$scope.effect.operation) $scope.effect.operation = 'add';
+            $scope.goals = [{ goalId: $scope.effect.goalId }];
+            backendCommunicator.fireEventAsync('msgg:goal-tracker-list', $scope.effect.goalId).then(({ goals, selectedGoalId }: { goals: any[]; selectedGoalId: string }) => {
+                $scope.$applyAsync(() => {
+                    $scope.effect.goalId = selectedGoalId;
+                    $scope.goals = goals;
+                    if (!goals.some(goal => goal.goalId === $scope.effect.goalId)) $scope.goals.unshift({ goalId: $scope.effect.goalId });
+                });
+            }).catch(() => {
+                $scope.$applyAsync(() => { $scope.goalListError = 'Unable to load goals. Check that the Goal Tracker plugin is enabled.'; });
+            });
+            $scope.selectedGoal = () => $scope.goals.find((goal: any) => goal.goalId === $scope.effect.goalId);
+        },
+        onTriggerEvent: async (event) => runGoalOperation(async goalManager => {
             try {
                 const donorName = event.effect.donorName;
                 const donationAmount = event.effect.donationAmount ? Number(event.effect.donationAmount) : undefined;
                 const operation = event.effect.operation;
-
-                if (!goalManager) {
-                    logger.error('Goal manager not initialized');
-                    return { success: false };
+                const id = goalId(event.effect.goalId);
+                if ((operation === 'add' || operation === 'remove') && (!Number.isFinite(donationAmount) || donationAmount! <= 0)) {
+                    return { success: false, errorMessage: 'Donation amount must be finite and greater than zero' };
+                }
+                if (['add', 'remove', 'resetUser'].includes(operation) && !donorName?.trim()) {
+                    return { success: false, errorMessage: 'Donor name is required' };
                 }
 
                 switch (operation) {
@@ -41,7 +59,7 @@ export function goalTrackerManagerEffectType() {
                         await goalManager.updateLocalDonation({
                             name: donorName,
                             amount: donationAmount
-                        });
+                        }, id);
                         break;
 
                     case 'remove':
@@ -49,7 +67,7 @@ export function goalTrackerManagerEffectType() {
                             logger.error('Donation amount required for remove operation');
                             return { success: false };
                         }
-                        const localDonations = await goalManager.getLocalDonations();
+                        const localDonations = await goalManager.getLocalDonations(id);
                         if (!localDonations?.data?.donations) {
                             logger.error('Local donations data not found');
                             return { success: false };
@@ -68,23 +86,31 @@ export function goalTrackerManagerEffectType() {
                             logger.error('Donation not found for removal');
                             return { success: false };
                         }
-                        await goalManager.removeLocalDonation(donationToRemove.timestamp);
+                        await goalManager.removeLocalDonation(donationToRemove.id || donationToRemove.timestamp, id);
                         break;
 
                     case 'resetUser':
-                        await goalManager.resetUserDonations(donorName);
+                        await goalManager.resetUserDonations(donorName, id);
                         break;
 
                     case 'resetStreamElements':
-                        await goalManager.resetStreamElementsData();
+                        await goalManager.resetStreamElementsData(id);
                         break;
 
                     case 'resetExtraLife':
-                        await goalManager.resetExtraLifeData();
+                        await goalManager.resetExtraLifeData(id);
                         break;
 
                     case 'resetLocalData':
-                        await goalManager.resetLocalData();
+                        await goalManager.resetLocalData(id);
+                        break;
+
+                    case 'resetRemoteGoals':
+                        await goalManager.resetRemoteGoals(id);
+                        break;
+
+                    case 'hide':
+                        await goalManager.hide(id);
                         break;
 
                     default:
@@ -95,9 +121,9 @@ export function goalTrackerManagerEffectType() {
                 return { success: true };
             } catch (error) {
                 logger.error('Error in goal tracker local update effect:', error);
-                return { success: false };
+                return { success: false, errorMessage: (error as Error).message };
             }
-        }
+        })
     };
     return localUpdateEffectType;
 }

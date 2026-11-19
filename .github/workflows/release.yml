@@ -1,0 +1,47 @@
+name: Prepare draft plugin release
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag matching package.json (for example v1.1.0)'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: plugin-release-${{ inputs.tag }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test -- --runInBand
+      - run: npm run test:browser
+        env:
+          CHROME_PATH: /usr/bin/google-chrome
+      - name: Generate community manifest and checksum
+        run: npm run release:prepare -- --tag "$RELEASE_TAG"
+        env:
+          RELEASE_TAG: ${{ inputs.tag }}
+      - name: Create draft for review
+        run: >-
+          gh release create "$RELEASE_TAG"
+          dist/MSGG-GoalTracker.js release/community-plugin.json release/SHA256SUMS
+          --target "$GITHUB_SHA" --draft
+          --title "Advanced Goal Tracker $RELEASE_TAG" --notes-file CHANGELOG.md
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.tag }}

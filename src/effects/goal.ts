@@ -8,15 +8,17 @@
  * - Real-time updates and local/remote data synchronization
  */
 
-import { Firebot, ScriptModules } from "@crowbartools/firebot-custom-scripts-types";
+import firebot, { EffectType } from "@crowbartools/firebot-types";
 import { randomUUID } from "crypto";
-import { webServer, settings } from "../main";
-import { EffectModel, GoalTrackerUpdate, EventData, GoalTrackerConfig, GoalState } from "../types/types";
+
+import { EffectModel, GoalOverlayEvent } from "../types/types";
 import goalTrackerTemplate from "../templates/goal-template.html";
-import { goalManager } from '../utility/goal-manager';
+import { activateGoal } from '../plugin-runtime';
 import { logger } from "../logger";
 
-let activePollingInterval: NodeJS.Timeout | null = null;
+import { buildGoalConfig, validateEffect } from "../utility/configuration";
+import { onGoalOverlayEvent } from "../overlay/overlay-events";
+import { withRendererRules } from "../utility/renderer-callback";
 
 /**
  * Creates and configures the main goal tracker effect type for Firebot
@@ -26,20 +28,17 @@ let activePollingInterval: NodeJS.Timeout | null = null;
  * - Real-time data polling and updates
  * - Visual customization and behavior settings
  * 
- * @param {ScriptModules["resourceTokenManager"]} resourceTokenManager - Manager for handling resource paths and tokens
- * @returns {Firebot.EffectType} Configured goal tracker effect type
+ * @returns Configured goal tracker effect type
  */
-export function goalTrackerEffectType(
-    resourceTokenManager: ScriptModules["resourceTokenManager"],
-) {
-    const goalTrackerEffectType: Firebot.EffectType<EffectModel> = {
+export function goalTrackerEffectType() {
+    const goalTrackerEffectType: EffectType<EffectModel, GoalOverlayEvent> = {
         definition: {
             id: "msgg:goaltracker",
             name: "Advanced Goal Tracker",
             description: "Highly customizable Goal/Donation Tracking with Countdown",
             icon: "fad fa-chart-line",
             categories: ["overlay"],
-            dependencies: [],
+            dependencies: {},
             triggers: {
                 command: true,
                 custom_script: true,
@@ -61,7 +60,7 @@ export function goalTrackerEffectType(
          * @param {any} $scope - Angular scope object
          * @param {any} utilityService - Utility service for overlay management
          */
-        optionsController: ($scope: any, utilityService: any) => {
+        optionsController: withRendererRules(['$scope', 'utilityService'], (goalLogic, $scope: any, utilityService: any) => {
             /** 
              * Displays the overlay information modal for the specified instance
              * @param {string} overlayInstance - Identifier for the overlay instance
@@ -115,14 +114,8 @@ export function goalTrackerEffectType(
              * Handles position validation and error logging
              */
             $scope.setCountdownPosition = function () {
-                const selectedIndex = $scope.countdownPositions.findIndex((label: string) => {
-                    return label === $scope.effect.display.countdown.countdownPosition;
-                });
-
-                if (selectedIndex !== -1) {
-                    $scope.effect.display.countdown.countdownPositionValue = selectedIndex;
-                } else {
-                    console.error('Invalid countdownPosition:', $scope.effect.display.countdown.countdownPosition);
+                if (!$scope.countdownPositions[$scope.effect.display.countdown.countdownPosition]) {
+                    $scope.effect.display.countdown.countdownPosition = 'below';
                 }
             };
 
@@ -131,14 +124,8 @@ export function goalTrackerEffectType(
             * Handles position validation and error logging
             */
             $scope.setInfoPosition = function () {
-                const selectedIndex = $scope.infoPositions.findIndex((label: string) => {
-                    return label === $scope.effect.display.infoSection.infoPosition;
-                });
-
-                if (selectedIndex !== -1) {
-                    $scope.effect.display.infoSection.infoPositionValue = selectedIndex;
-                } else {
-                    console.error('Invalid infoPosition:', $scope.effect.display.infoSection.infoPosition);
+                if (!$scope.infoPositions[$scope.effect.display.infoSection.infoPosition]) {
+                    $scope.effect.display.infoSection.infoPosition = 'below';
                 }
             };
 
@@ -201,6 +188,7 @@ export function goalTrackerEffectType(
                 $scope.effect.endDate = new Date(tomorrow.getFullYear(), tomorrow.getMonth(), tomorrow.getDate());
                 $scope.effect.startTime = createTimeDate(8, 0);
                 $scope.effect.endTime = createTimeDate(8, 0);
+                $scope.effect.goalId = "goal_" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
                 $scope.effect.donationGoal = 550;
                 $scope.effect.largestDonationTieMode = "all";
                 $scope.effect.showDonationTimestamp = false;
@@ -216,7 +204,6 @@ export function goalTrackerEffectType(
                 $scope.effect.separateInfoColors = false;
                 $scope.effect.showDonationAnimation = true;
                 $scope.effect.showLogoAnimation = true;
-                $scope.effect.useCustomDonationData = false;
                 $scope.effect.milestones = [];
                 $scope.effect.extraLife = {
                     useExtraLife: false,
@@ -311,6 +298,7 @@ export function goalTrackerEffectType(
                     jwtToken: '',
                     pollInterval: 60,
                     useLocalDonations: false,
+                    autoReset: false,
                     summaryType: 'monthly',
                     localDonationsPeriod: 'monthly',
                     subscriptionValues: {
@@ -345,10 +333,21 @@ export function goalTrackerEffectType(
                 $scope.effect.endTime = createTimeDate(savedEnd.getHours(), savedEnd.getMinutes());
             }
 
+            if (!$scope.effect.goalId) $scope.effect.goalId = "default";
+            Object.assign($scope.effect.templates.animation, goalLogic.animationBackgrounds($scope.effect.templates.animation));
+            // Native number inputs require numeric models, including values saved by older text controls.
+            const sizing = goalLogic.widgetSizing($scope.effect.widgetWidth, $scope.effect.widgetScale, $scope.effect.autoWidgetWidth);
+            $scope.effect.widgetWidth = sizing.width;
+            $scope.effect.widgetScale = sizing.scale;
+            $scope.effect.autoWidgetWidth = sizing.autoWidth;
+            $scope.effect.display.fixedSectionWidths = goalLogic.fixedSectionWidths($scope.effect.display);
+            delete $scope.effect.display.infoSection.fixedWidth;
+            $scope.effect.overlayGaps = goalLogic.widgetGaps($scope.effect.overlayGaps);
+            if ($scope.effect.streamElements.autoReset === undefined) $scope.effect.streamElements.autoReset = false;
             if ($scope.effect.showCompletedMilestones === undefined) {
                 $scope.effect.showCompletedMilestones = true;
             }
-        },
+        }),
         /**
          * Validates the effect configuration with the following checks:
          * - Ensures valid donation goal amount
@@ -357,10 +356,11 @@ export function goalTrackerEffectType(
          * @param {EffectModel} effect - The effect configuration to validate
          * @returns {string[]} Array of validation error messages
          */
-        optionsValidator: (effect) => {
-            const errors = [];
+        optionsValidator: withRendererRules(['effect'], (goalLogic, effect: EffectModel) => {
+            const errors = [...goalLogic.widgetSizingErrors(effect.widgetWidth, effect.widgetScale, effect.autoWidgetWidth),
+            ...(String(effect.position).toLowerCase() === 'custom' ? [] : goalLogic.widgetGapErrors(effect.overlayGaps))];
 
-            if (!effect.donationGoal || effect.donationGoal <= 0) {
+            if (!Number.isFinite(Number(effect.donationGoal)) || Number(effect.donationGoal) <= 0) {
                 errors.push("Please enter a valid donation goal amount");
             }
 
@@ -374,7 +374,7 @@ export function goalTrackerEffectType(
                 }
             }
             return errors;
-        },
+        }),
         /**
          * Handles trigger events for the goal tracker
          * Manages:
@@ -386,450 +386,21 @@ export function goalTrackerEffectType(
          * @param {any} event - Trigger event data
          * @returns {Promise<{success: boolean, error?: string}>} Operation result
          */
-        onTriggerEvent: async (event: any) => {
-            let overlayInstance = event.effect.overlayInstance || '';
-
-            /**
-             * Initiates data polling for the specified mode
-             * Handles different data sources (ExtraLife, StreamElements, local)
-             * 
-             * @param {string} mode - Polling mode ('extraLife', 'streamElements', 'local')
-             * @param {any} config - Configuration for the polling operation
-             * @param {string} overlayInstance - Target overlay instance
-             */
-            function startPolling(mode: string, config: any, overlayInstance: string) {
-                // Clear existing interval
-                if (activePollingInterval) {
-                    clearInterval(activePollingInterval);
-                    activePollingInterval = null;
-                }
-
-                const pollFunction = async () => {
-                    const currentState = await goalManager.getGoalData();
-
-                    if (currentState?.config.extraLife.useExtraLife && mode !== 'extraLife') {
-                        return;
-                    }
-                    if (currentState?.config.streamElements.useStreamElements && mode !== 'streamElements') {
-                        return;
-                    }
-                    if ((currentState?.config.extraLife.useExtraLife || currentState?.config.streamElements.useStreamElements) && mode === 'local') {
-                        return;
-                    }
-
-                    let data = null;
-                    switch (mode) {
-                        case 'extraLife':
-                            data = await goalManager.pollExtraLife(config.extraLife.participantId);
-                            if (data !== null) {
-                                await webServer.sendToOverlay("goal-tracker", {
-                                    type: 'update',
-                                    data: { extraLife: data },
-                                    overlayInstance
-                                });
-                            }
-                            break;
-
-                        case 'streamElements':
-                            try {
-                                data = await goalManager.pollStreamElements(
-                                    config.streamElements.channelId,
-                                    config.streamElements.jwtToken,
-                                    config.streamElements.useLocalDonations
-                                );
-                                if (data !== null) {
-                                    if (config.streamElements.useLocalDonations) {
-                                        const localDonations = await goalManager.getLocalDonations();
-                                        if (localDonations) {
-                                            const now = new Date();
-                                            const currentMonth = now.getMonth();
-                                            const currentYear = now.getFullYear();
-
-                                            // Filter local donations based on summary type
-                                            const filteredDonations = localDonations.data.donations.map(donor => ({
-                                                ...donor,
-                                                individual_donations: donor.individual_donations.filter(d => {
-                                                    const donationDate = new Date(d.timestamp);
-                                                    if (config.streamElements.summaryType === 'monthly') {
-                                                        return donationDate.getMonth() === currentMonth &&
-                                                            donationDate.getFullYear() === currentYear;
-                                                    } else {
-                                                        // Weekly - get donations from current week (Sunday to Saturday)
-                                                        const weekStart = new Date(now);
-                                                        weekStart.setDate(now.getDate() - now.getDay());
-                                                        weekStart.setHours(0, 0, 0, 0);
-
-                                                        const weekEnd = new Date(weekStart);
-                                                        weekEnd.setDate(weekStart.getDate() + 7);
-
-                                                        return donationDate >= weekStart && donationDate < weekEnd;
-                                                    }
-                                                })
-                                            })).filter(donor => donor.individual_donations.length > 0);
-
-                                            // Recalculate totals for filtered donations
-                                            const filteredTotal = filteredDonations.reduce((acc, donor) => {
-                                                const donorTotal = donor.individual_donations.reduce((sum, d) => sum + d.amount, 0);
-                                                return {
-                                                    amount: acc.amount + donorTotal,
-                                                    donation_count: acc.donation_count + donor.individual_donations.length
-                                                };
-                                            }, { amount: 0, donation_count: 0 });
-
-                                            data.current.donations = [...data.current.donations, ...filteredDonations];
-                                            data.current.overall_total.amount = Number((data.current.overall_total.amount + filteredTotal.amount).toFixed(2));
-                                            data.current.overall_total.donation_count += filteredTotal.donation_count;
-                                        }
-                                    }
-                                    await webServer.sendToOverlay("goal-tracker", {
-                                        type: 'update',
-                                        data: { streamElements: data },
-                                        overlayInstance
-                                    });
-                                }
-                            } catch (error) {
-                                logger.error('StreamElements polling error:', error);
-                            }
-                            break;
-
-                        case 'local':
-                            setTimeout(async () => {
-                                const localData = await goalManager.getLocalDonations();
-                                if (localData?.data?.donations) {
-                                    const now = new Date();
-                                    const currentMonth = now.getMonth();
-                                    const currentYear = now.getFullYear();
-
-                                    // Helper function to check if date is within period
-                                    const isInPeriod = (dateStr: string, period: 'all' | 'daily' | 'weekly' | 'monthly'): boolean => {
-                                        if (period === 'all') return true;  // Show all donations when 'all' is selected
-
-                                        const date = new Date(dateStr);
-                                        switch (period) {
-                                            case 'daily':
-                                                return date.getDate() === now.getDate() &&
-                                                    date.getMonth() === currentMonth &&
-                                                    date.getFullYear() === currentYear;
-                                            case 'weekly': {
-                                                const weekStart = new Date(now);
-                                                weekStart.setDate(now.getDate() - now.getDay());
-                                                weekStart.setHours(0, 0, 0, 0);
-
-                                                const weekEnd = new Date(weekStart);
-                                                weekEnd.setDate(weekStart.getDate() + 7);
-
-                                                return date >= weekStart && date < weekEnd;
-                                            }
-                                            case 'monthly':
-                                                return date.getMonth() === currentMonth &&
-                                                    date.getFullYear() === currentYear;
-                                            default:
-                                                return false;
-                                        }
-                                    };
-
-                                    // Filter donations based on selected period
-                                    const filteredDonations = localData.data.donations.map(donor => ({
-                                        ...donor,
-                                        individual_donations: donor.individual_donations.filter(d => {
-                                            return isInPeriod(
-                                                d.timestamp,
-                                                config.streamElements.localDonationsPeriod || 'monthly'
-                                            );
-                                        })
-                                    })).filter(donor => donor.individual_donations.length > 0);
-
-                                    // Recalculate totals
-                                    const filteredTotal = filteredDonations.reduce((acc, donor) => {
-                                        const donorTotal = donor.individual_donations.reduce((sum, d) => sum + d.amount, 0);
-                                        return {
-                                            amount: acc.amount + donorTotal,
-                                            donation_count: acc.donation_count + donor.individual_donations.length
-                                        };
-                                    }, { amount: 0, donation_count: 0 });
-
-                                    // Create filtered data object
-                                    const filteredData = {
-                                        data: {
-                                            donations: filteredDonations,
-                                            overall_total: {
-                                                amount: Number(filteredTotal.amount.toFixed(2)),
-                                                donation_count: filteredTotal.donation_count
-                                            },
-                                            metadata: {
-                                                lastUpdated: new Date().toISOString()
-                                            }
-                                        }
-                                    };
-
-                                    await webServer.sendToOverlay("goal-tracker", {
-                                        type: 'update',
-                                        data: { localDonations: filteredData },
-                                        overlayInstance
-                                    });
-                                }
-                            }, 100);
-                            break;
-                    }
-                };
-
-
-                pollFunction();
-
-                const interval = mode === 'extraLife' ? config.extraLife.dataPollInterval :
-                    mode === 'streamElements' ? config.streamElements.pollInterval :
-                        config.timing.dataPollInterval;
-                activePollingInterval = setInterval(pollFunction, interval * 1000);
-            }
-
+        onTriggerEvent: async (event) => {
             try {
+                validateEffect(event.effect);
                 const goalUuid = randomUUID();
-
-                let dataSourceMode = 'local';
-                if (event.effect.extraLife.useExtraLife) {
-                    dataSourceMode = 'extraLife';
-                    event.effect.streamElements.useStreamElements = false;
-                } else if (event.effect.streamElements.useStreamElements) {
-                    dataSourceMode = 'streamElements';
-                }
-
-                // Construct base configuration
-                const config: GoalTrackerConfig = {
-                    streamInfo: {
-                        startDate: new Date(event.effect.startDate).toISOString().split('T')[0],
-                        startTime: typeof event.effect.startTime === 'object' ?
-                            `${String((event.effect.startTime as Date).getHours()).padStart(2, '0')}:${String((event.effect.startTime as Date).getMinutes()).padStart(2, '0')}` :
-                            new Date(event.effect.startTime).toLocaleTimeString('en-US', {
-                                hour12: false,
-                                hour: '2-digit',
-                                minute: '2-digit'
-                            }).replace(/^24:/, '00:'),
-                        endDate: new Date(event.effect.endDate).toISOString().split('T')[0],
-                        endTime: typeof event.effect.endTime === 'object' ?
-                            `${String((event.effect.endTime as Date).getHours()).padStart(2, '0')}:${String((event.effect.endTime as Date).getMinutes()).padStart(2, '0')}` :
-                            new Date(event.effect.endTime).toLocaleTimeString('en-US', {
-                                hour12: false,
-                                hour: '2-digit',
-                                minute: '2-digit'
-                            }).replace(/^24:/, '00:')
-                    },
-                    donationGoal: event.effect.donationGoal,
-                    mode: {
-                        useMilestonesAsGoals: event.effect.useMilestonesAsGoals,
-                        milestoneCycle: event.effect.milestoneCycle,
-                        milestoneCycleMode: event.effect.milestoneCycleMode,
-                        showCompletedMilestones: event.effect.showCompletedMilestones,
-                        infoSectionCycle: event.effect.infoSectionCycle,
-                        showInfoSection: event.effect.showInfoSection,
-                        separateInfoColors: event.effect.separateInfoColors,
-                        showDonationAnimation: event.effect.showDonationAnimation,
-                        showLogoAnimation: event.effect.showLogoAnimation,
-                        showDonationTimestamp: event.effect.showDonationTimestamp,
-                        useCustomLargestMessage: event.effect.useCustomLargestMessage,
-                        useCustomRecentMessage: event.effect.useCustomRecentMessage,
-                        largestDonationTieMode: event.effect.largestDonationTieMode
-                    },
-                    display: event.effect.display,
-                    content: {
-                        milestones: event.effect.milestones,
-                        templates: {
-                            extraLife: {
-                                titles: event.effect.templates.titles,
-                                donations: event.effect.templates.donations,
-                                colors: {
-                                    progressColor: "#00B4FF",
-                                    trackColor: "rgba(27, 40, 56, 0.95)",
-                                    goalColor: "#ffffff",
-                                    milestoneColor: "#ffffff",
-                                    progressBoxColorOne: "#1B2838",
-                                    progressBoxColorTwo: "#2A475E",
-                                    goalTitleColor: "#e3e3e3",
-                                    countdownBackgroundColorOne: "#1B2838",
-                                    countdownBackgroundColorTwo: "#2A475E",
-                                    countdownTitleColor: "rgba(227, 227, 227, 0.95)",
-                                    countdownTimeBackground: "rgba(0, 180, 255, 0.95)",
-                                    countdownTimeColor: "#ffffff",
-                                    countdownTimeShadow: "0 0 20px rgba(0, 180, 255, 0.3)",
-                                    infoSectionBackgroundColorOne: "#1B2838",
-                                    infoSectionBackgroundColorTwo: "#2A475E",
-                                    donorTextColor: "#e3e3e3",
-                                    largestTextColor: "#e3e3e3",
-                                    additionalTextColor: "#e3e3e3",
-                                    infoDonorBackground: "rgba(255, 255, 255, 0.03)",
-                                    infoLargestBackground: "rgba(255, 255, 255, 0.02)",
-                                    infoAdditionalBackground: "rgba(255, 255, 255, 0.03)",
-                                    infoBorderColor: "rgba(227, 227, 227, 0.1)"
-                                },
-                                animation: event.effect.templates.animation
-                            },
-                            default: {
-                                titles: event.effect.templates.titles,
-                                donations: event.effect.templates.donations,
-                                colors: event.effect.templates.colors,
-                                animation: event.effect.templates.animation
-                            }
-                        },
-                        branding: {
-                            logo: {
-                                extraLife: {
-                                    src: resourceTokenManager.storeResourcePath("ExtraLifeLogo.png", 0),
-                                    alt: "Extra Life Logo",
-                                    styles: {
-                                        width: "100%",
-                                        height: "100%",
-                                        objectFit: "contain",
-                                        padding: "0",
-                                        background: "none"
-                                    }
-                                },
-                                default: {
-                                    src: event.effect.defaultLogoPath ?
-                                        resourceTokenManager.storeResourcePath(
-                                            event.effect.defaultLogoPath,
-                                            parseInt(goalUuid.slice(9, 17), 16) % 1000000
-                                        ) : "",
-                                    alt: "Stream Logo",
-                                    styles: {
-                                        width: "100%",
-                                        height: "100%",
-                                        objectFit: "contain",
-                                        padding: "0",
-                                        background: "none"
-                                    }
-                                }
-                            }
-                        }
-                    },
-                    timing: event.effect.timing,
-                    extraLife: event.effect.extraLife,
-                    streamElements: event.effect.streamElements,
-                    position: event.effect.position || 'Middle',
-                    customCoords: event.effect.customCoords || {
-                        top: null,
-                        bottom: null,
-                        left: null,
-                        right: null
-                    }
-                };
-
-                // Construct mode-specific goal state
-                const baseGoalState = {
-                    uuid: goalUuid,
-                    config,
-                    overlayInstance: event.effect.overlayInstance || '',
-                    createdAt: new Date().toISOString(),
-                    updatedAt: new Date().toISOString()
-                };
-
-                await goalManager.updateGoalData(baseGoalState);
-                // Send initial data to overlay
-                await webServer.sendToOverlay("goal-tracker", baseGoalState);
-
-                startPolling(dataSourceMode, config, overlayInstance);
-
-                if (settings?.useOverlayInstances()) {
-                    if (event.effect.overlayInstance != null) {
-                        if (settings.getOverlayInstances().includes(event.effect.overlayInstance)) {
-                            overlayInstance = event.effect.overlayInstance;
-                        }
-                    }
-                }
-
+                const config = buildGoalConfig(event.effect, path => firebot.webServer.createResourceToken(path));
+                await activateGoal(config, event.effect.overlayInstance || '', goalUuid, event.sendDataToOverlay);
                 return { success: true };
-            } catch (error: any) {
-                logger.error('Goal tracker error:', {
-                    message: error?.message || 'Unknown error',
-                    stack: error?.stack || 'No stack trace',
-                    eventData: {
-                        hasEffect: !!event.effect
-                    }
-                });
-                return { success: false, error: error?.message || 'Unknown error' };
+            } catch (error) {
+                logger.error('Goal tracker configuration failed:', error);
+                return { success: false, errorMessage: (error as Error).message };
             }
         },
-        /**
-         * Configuration for overlay extension functionality
-         * Handles:
-         * - Dependency management
-         * - Event handling
-         * - DOM manipulation
-         * - Resource loading
-         */
         overlayExtension: {
-            dependencies: {
-                css: [],
-                js: []
-            },
-            event: {
-                name: "goal-tracker",
-                onOverlayEvent: (data: unknown) => {
-                    const event = data as EventData | GoalTrackerUpdate;
-
-                    if ((event as EventData).config) {
-                        const eventData = event as EventData;
-
-                        const positionClass = eventData.config.position.toLowerCase().replace(' ', '-');
-                        const { customCoords } = eventData.config;
-
-                        // Convert resource tokens to full URLs immediately
-                        if (eventData.config.content.branding.logo.default.src) {
-                            eventData.config.content.branding.logo.default.src =
-                                `http://${window.location.hostname}:7472/resource/${encodeURIComponent(eventData.config.content.branding.logo.default.src)}`;
-                        }
-                        if (eventData.config.content.branding.logo.extraLife.src) {
-                            eventData.config.content.branding.logo.extraLife.src =
-                                `http://${window.location.hostname}:7472/resource/${encodeURIComponent(eventData.config.content.branding.logo.extraLife.src)}`;
-                        }
-
-                        // Check if this goal tracker already exists
-                        const existingTracker = document.getElementById('goal-tracker');
-                        if (existingTracker) {
-                            existingTracker.remove();
-                        }
-                        // Create new tracker
-                        const wrapper = document.createElement('div');
-                        wrapper.id = 'goal-tracker';
-                        wrapper.className = `position-wrapper ${positionClass}`;
-
-                        // Add inner position container
-                        let innerHtml = `<div class="inner-position"`;
-                        if (eventData.config.position === 'Custom' && customCoords) {
-                            innerHtml += ` style="position: absolute;`;
-                            if (customCoords.top !== null) innerHtml += `top: ${customCoords.top}px;`;
-                            if (customCoords.bottom !== null) innerHtml += `bottom: ${customCoords.bottom}px;`;
-                            if (customCoords.left !== null) innerHtml += `left: ${customCoords.left}px;`;
-                            if (customCoords.right !== null) innerHtml += `right: ${customCoords.right}px;`;
-                            innerHtml += `"`;
-                        }
-                        innerHtml += `>`;
-
-                        // Inject template
-                        fetch(`http://${window.location.hostname}:7472/integrations/goal-tracker/goal-tracker.html`)
-                            .then(response => response.text())
-                            .then(template => {
-                                const configString = JSON.stringify(eventData.config, null, 2);
-                                const updatedTemplate = template.replace(
-                                    /const CONFIG = \{[\s\S]*?\};/,
-                                    `const CONFIG = ${configString};`
-                                );
-                                wrapper.innerHTML = innerHtml + updatedTemplate + '</div>';
-                                $("#wrapper").append(wrapper);
-                            });
-
-                    } else {
-                        const updateEvent = event as GoalTrackerUpdate;
-                        if (updateEvent.type === 'update') {
-                            // Include goal info in the update event
-                            window.dispatchEvent(new CustomEvent('goalTrackerUpdate', {
-                                detail: {
-                                    overlayInstance: updateEvent.overlayInstance,
-                                    ...updateEvent.data
-                                }
-                            }));
-                        }
-                    }
-                }
-            }
+            dependencies: { css: [], js: [] },
+            event: { name: "goal-tracker", onOverlayEvent: onGoalOverlayEvent }
         }
     };
     return goalTrackerEffectType;

@@ -1,0 +1,8 @@
+{
+  "minimumFirebotVersion": { "major": 5, "minor": 67, "patch": 0 },
+  "icon": { "type": "font-awesome", "name": "fa-chart-line", "color": "#a60000" },
+  "category": "overlays",
+  "features": ["effects", "variables"],
+  "tags": ["goals", "fundraising", "extra-life", "streamelements", "overlays"],
+  "repo": "https://github.com/MorningStarGG/Firebot-Goal-Tracker"
+}

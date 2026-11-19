@@ -12,6 +12,14 @@
     }
 </style>
 <div ng-cloak>
+    <eos-container header="Goal Identity" aria-label="Goal identity settings">
+        <firebot-input input-title="Goal ID" model="effect.goalId" placeholder="goal_monthly_support"
+            aria-label="Enter Goal ID"></firebot-input>
+        <p class="muted">Use a different ID for each independent goal. Reusing an ID updates that goal.</p>
+        <p class="muted">IDs use the goal_ prefix, are lowercased, and spaces become underscores: Monthly Support
+            becomes goal_monthly_support. You can enter the ID with or without the prefix. Display titles keep their
+            original wording.</p>
+    </eos-container>
     <eos-container header="Countdown Settings" aria-label="Countdown configuration settings">
         <div class="controls-fb-inline">
             <label class="control-fb control--checkbox">
@@ -203,7 +211,7 @@
                 <div class="control__indicator"></div>
             </label>
             <label class="control-fb control--checkbox"
-                ng-if="effect.milestones && effect.milestones.length > 0 && effect.milestoneCycle">
+                ng-if="effect.milestones && effect.milestones.length > 0 && effect.milestoneCycle && effect.milestoneCycleMode === 'all'">
                 <input type="checkbox" ng-model="effect.showCompletedMilestones"
                     aria-label="Toggle showing completed milestones once they are met">
                 Show Completed Milestones
@@ -266,6 +274,34 @@
             <label class="control-fb control--checkbox">
                 <input type="checkbox" ng-model="effect.showLogoAnimation" aria-label="Enable countdown logo animation">
                 Show Countdown Logo Animation
+                <div class="control__indicator"></div>
+            </label>
+        </div>
+        <div style="margin-bottom: 10px;">
+            <div class="row">
+                <div class="col-md-6">
+                    <firebot-input input-title="Width PX" input-type="number" disable-variables="true"
+                        model="effect.widgetWidth" placeholder-text="475"
+                        aria-label="{{effect.autoWidgetWidth ? 'Set maximum widget width in pixels, from 475 to 3840' : 'Set goal widget width in pixels, from 200 to 3840'}}"></firebot-input>
+                </div>
+                <div class="col-md-6">
+                    <firebot-input input-title="Scale %" input-type="number" disable-variables="true"
+                        model="effect.widgetScale" placeholder-text="100"
+                        aria-label="Set goal widget scale in percent, from 10 to 300"></firebot-input>
+                </div>
+            </div>
+        </div>
+        <div class="controls-fb-inline" style="margin-bottom: 10px;">
+            <label class="control-fb control--checkbox">
+                <input type="checkbox" ng-model="effect.autoWidgetWidth"
+                    aria-label="Automatically adjust goal width for text">
+                Auto Adjust Goal Width for Text
+                <div class="control__indicator"></div>
+            </label>
+            <label class="control-fb control--checkbox" ng-if="effect.autoWidgetWidth">
+                <input type="checkbox" ng-model="effect.display.fixedSectionWidths"
+                    aria-label="Keep countdown and info sections at default width while the goal bar automatically adjusts to text">
+                Keep Info Section Default Width
                 <div class="control__indicator"></div>
             </label>
         </div>
@@ -355,7 +391,7 @@
                 placeholder="Stream Event Info!" ng-model-options="{ updateOn: 'blur' }"
                 aria-label="Enter animation subheader text"></firebot-input>
         </div>
-        <div class="input-group" style="margin-bottom: 10px;">
+        <div style="margin-bottom: 10px;">
             <div class="row">
                 <div class="col-md-6">
                     <div style="margin-bottom: 10px;">
@@ -363,9 +399,25 @@
                             aria-label="Select animation header color"></color-picker-input>
                     </div>
                     <div style="margin-bottom: 10px;">
-                        <color-picker-input model="effect.templates.animation.animationBackgroundColorOne"
-                            label="BG Color One"
-                            aria-label="Select first animation background color"></color-picker-input>
+                        <label for="animation-header-background-style">Header Background</label>
+                        <select id="animation-header-background-style" class="form-control"
+                            ng-model="effect.templates.animation.headerBackground.style"
+                            aria-label="Select header background style">
+                            <option value="gradient">Diagonal Gradient</option>
+                            <option value="centered">Centered Gradient</option>
+                            <option value="solid">Solid</option>
+                            <option value="none">None</option>
+                        </select>
+                    </div>
+                    <div style="margin-bottom: 10px;">
+                        <color-picker-input model="effect.templates.animation.headerBackground.colorOne"
+                            label="Header BG Color One"
+                            aria-label="Select first header background color"></color-picker-input>
+                    </div>
+                    <div style="margin-bottom: 10px;">
+                        <color-picker-input model="effect.templates.animation.headerBackground.colorTwo"
+                            label="Header BG Color Two"
+                            aria-label="Select second header background color"></color-picker-input>
                     </div>
                 </div>
                 <div class="col-md-6">
@@ -374,10 +426,38 @@
                             aria-label="Select animation subheader color"></color-picker-input>
                     </div>
                     <div style="margin-bottom: 10px;">
-                        <color-picker-input model="effect.templates.animation.animationBackgroundColorTwo"
-                            label="BG Color Two"
-                            aria-label="Select second animation background color"></color-picker-input>
+                        <label for="animation-subheader-background-style">Subheader Background</label>
+                        <select id="animation-subheader-background-style" class="form-control"
+                            ng-model="effect.templates.animation.subheaderBackground.style"
+                            aria-label="Select subheader background style">
+                            <option value="gradient">Diagonal Gradient</option>
+                            <option value="centered">Centered Gradient</option>
+                            <option value="solid">Solid</option>
+                            <option value="none">None</option>
+                        </select>
                     </div>
+                    <div style="margin-bottom: 10px;">
+                        <color-picker-input model="effect.templates.animation.subheaderBackground.colorOne"
+                            label="Subheader BG Color One"
+                            aria-label="Select first subheader background color"></color-picker-input>
+                    </div>
+                    <div style="margin-bottom: 10px;">
+                        <color-picker-input model="effect.templates.animation.subheaderBackground.colorTwo"
+                            label="Subheader BG Color Two"
+                            aria-label="Select second subheader background color"></color-picker-input>
+                    </div>
+                </div>
+            </div>
+            <div class="row">
+                <div class="col-md-6" style="margin-bottom: 10px;">
+                    <color-picker-input model="effect.templates.animation.animationBackgroundColorOne"
+                        label="Box BG Color One"
+                        aria-label="Select first event box background color"></color-picker-input>
+                </div>
+                <div class="col-md-6" style="margin-bottom: 10px;">
+                    <color-picker-input model="effect.templates.animation.animationBackgroundColorTwo"
+                        label="Box BG Color Two"
+                        aria-label="Select second event box background color"></color-picker-input>
                 </div>
             </div>
             <color-picker-input model="effect.templates.animation.animationBorder" label="Border Color"
@@ -530,6 +610,10 @@
             </label>
         </div>
 
+        <p class="muted" ng-if="effect.extraLife.useExtraLife && effect.extraLife.useExtraLifeColors">
+            Uses the Extra Life palette for the progress bar, countdown, information section, and animations. Turn this
+            off to use your custom color settings.
+        </p>
         <div class="input-group" ng-if="effect.extraLife.useExtraLife">
             <firebot-input input-title="Participant ID" model="effect.extraLife.participantId"
                 placeholder="Enter Extra Life Participant ID" ng-model-options="{ updateOn: 'blur' }"
@@ -550,6 +634,12 @@
                 <input type="checkbox" ng-model="effect.streamElements.useLocalDonations"
                     aria-label="Include local donation merging with incoming SE data">
                 Include Local Donations
+                <div class="control__indicator"></div>
+            </label>
+            <label class="control-fb control--checkbox">
+                <input type="checkbox" ng-model="effect.streamElements.autoReset"
+                    aria-label="Automatically Reset StreamElements Goals">
+                Automatically Reset StreamElements Goals
                 <div class="control__indicator"></div>
             </label>
         </div>
@@ -589,9 +679,9 @@
                             aria-label="Set Tier 3 subscription value"></firebot-input>
                     </div>
                     <div class="input-group" style="margin-bottom: 10px;">
-                        <span class="input-group-addon">Data Range</span>
+                        <span class="input-group-addon">Date Range </span>
                         <select class="form-control" ng-model="effect.streamElements.summaryType"
-                            aria-label="Select StreamElements data range">
+                            aria-label="Select StreamElements date range">
                             <option value="monthly">Monthly</option>
                             <option value="weekly">Weekly</option>
                         </select>
@@ -621,6 +711,13 @@
             </div>
             <div id="jwt-help-display"
                 style="margin-top: 10px; display: none; text-align: left; font-size: 14px; border: 1px solid #ccc; padding: 10px; background-color: #24262A;">
+            </div>
+        </div>
+        <div ng-if="effect.streamElements.useStreamElements">
+            <div class="effect-info alert alert-warning" role="alert">
+                "Date Range" setting filters StreamElements events by the selected date range. Enable "Automatically
+                Reset StreamElements Goals" setting to also reset goal
+                progress at the start of each new period.
             </div>
         </div>
     </eos-container>
@@ -665,6 +762,29 @@
     </eos-container>
 
     <!-- Overlay Position and Instance Settings -->
+     <eos-container header="Edge Gaps (pixels)" pad-top="true" ng-if="effect.position !== 'Custom'"
+        aria-label="Preset overlay position edge gaps">
+        <div class="row" style="margin-bottom: 10px;">
+            <div class="col-md-6">
+                <firebot-input input-title="Top" input-type="number" disable-variables="true"
+                    model="effect.overlayGaps.top" aria-label="Top edge gap in overlay pixels"></firebot-input>
+            </div>
+            <div class="col-md-6">
+                <firebot-input input-title="Bottom" input-type="number" disable-variables="true"
+                    model="effect.overlayGaps.bottom" aria-label="Bottom edge gap in overlay pixels"></firebot-input>
+            </div>
+        </div>
+        <div class="row" style="margin-bottom: 10px;">
+            <div class="col-md-6">
+                <firebot-input input-title="Left" input-type="number" disable-variables="true"
+                    model="effect.overlayGaps.left" aria-label="Left edge gap in overlay pixels"></firebot-input>
+            </div>
+            <div class="col-md-6">
+                <firebot-input input-title="Right" input-type="number" disable-variables="true"
+                    model="effect.overlayGaps.right" aria-label="Right edge gap in overlay pixels"></firebot-input>
+            </div>
+        </div>
+    </eos-container>
     <eos-overlay-position effect="effect" pad-top="true"></eos-overlay-position>
     <eos-overlay-instance effect="effect" pad-top="true"></eos-overlay-instance>
 

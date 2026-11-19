@@ -1,5 +1,14 @@
-import { ReplaceVariable } from "@crowbartools/firebot-custom-scripts-types/types/modules/replace-variable-manager";
+import type { ReplaceVariable } from "@crowbartools/firebot-types";
 import { goalManager } from "../utility/goal-manager";
+import { goalLogic } from "../shared/goal-logic";
+import { goalId } from "../utility/goal-store";
+
+function selectGoal(params: string[]): { id: string; options: string[] } {
+    const selectors = params.filter(param => /^id=/i.test(param.trim()));
+    if (selectors.length > 1) throw new Error('Specify only one goal ID');
+    return { id: goalId(selectors[0]?.trim().slice(3)), options: params.filter(param => !/^id=/i.test(param.trim())).map(param => param.trim()) };
+}
+
 
 /**
  * Variable that checks if a specific donation exists for a given username and amount.
@@ -9,7 +18,7 @@ export const goalDonationCheckVariable: ReplaceVariable = {
     definition: {
         handle: "goalDonation",
         description: "Checks if a donation exists for specific username and amount",
-        usage: "goalDonation[username, amount]",
+        usage: "goalDonation[username, amount, goalId?]",
         examples: [
             {
                 usage: "goalDonation[MorningStarGG, 5]",
@@ -18,9 +27,10 @@ export const goalDonationCheckVariable: ReplaceVariable = {
         ],
         possibleDataOutput: ["bool"]
     },
-    evaluator: async (_, username: string, amount: string) => {
+    evaluator: async (_, username: string, amount: string, id: string = "default") => {
+        if (!username?.trim() || !Number.isFinite(Number(amount)) || Number(amount) <= 0) return false;
         // Retrieve local donation data
-        const localDonations = await goalManager.getLocalDonations();
+        const localDonations = await goalManager.getLocalDonations(goalId(id.trim().replace(/^id=/i, "")));
         if (!localDonations?.data?.donations) return false;
 
         // Find donor by case-insensitive username match
@@ -31,7 +41,7 @@ export const goalDonationCheckVariable: ReplaceVariable = {
         if (!donor) return false;
 
         // Check if donor has made a donation of the specified amount
-        const donationAmount = parseFloat(amount);
+        const donationAmount = Number(amount);
         return donor.individual_donations.some(
             donation => donation.amount === donationAmount
         );
@@ -46,7 +56,7 @@ export const goalInfoVariable: ReplaceVariable = {
     definition: {
         handle: "goalInfo",
         description: "Gets goal amounts with configurable display options",
-        usage: "goalInfo[displays?]",
+        usage: "goalInfo[displays?, id=goalId?]",
         examples: [
             {
                 usage: "goalInfo",
@@ -118,11 +128,13 @@ export const goalInfoVariable: ReplaceVariable = {
     evaluator: async (_, ...params: string[]) => {
         try {
             // Fetch current goal state data
-            const goalState = await goalManager.getGoalData();
+            const selection = selectGoal(params);
+            params = selection.options;
+            const goalState = await goalManager.getGoalData(selection.id);
             if (!goalState) return "0";
 
             // Get currency symbol from config or default to '$'
-            const currencySymbol = goalState.config?.content?.templates?.donations?.currencySymbol || '$';
+            const currencySymbol = goalState.config.content.templates[goalState.config.extraLife.useExtraLife ? 'extraLife' : 'default'].donations.currencySymbol || '$';
 
             // Convert all display options to lowercase and remove empty strings
             const displayOpts = new Set(
@@ -130,14 +142,14 @@ export const goalInfoVariable: ReplaceVariable = {
             );
 
             // Validate timecode display options
-            if (displayOpts.has('timeCode') && displayOpts.size > 1) {
+            if (displayOpts.has('timecode') && displayOpts.size > 1) {
                 return "Timecode display cannot be combined with other options";
             }
 
             // Handle time display formatting
             if (displayOpts.has('time')) {
                 const timeUnitFlags = ['months', 'days', 'hours', 'minutes', 'seconds'];
-                const zeroPadFlags = ['zeroYears', 'zeroMonths', 'zeroDays', 'zeroHours', 'zeroMinutes', 'zeroSeconds'];
+                const zeroPadFlags = ['zeroyears', 'zeromonths', 'zerodays', 'zerohours', 'zerominutes', 'zeroseconds'];
                 const validTimeFlags = [...timeUnitFlags, ...zeroPadFlags];
 
                 // Check if any invalid flags are present
@@ -187,7 +199,7 @@ export const goalInfoVariable: ReplaceVariable = {
 
                 // Format time units with optional zero padding
                 const formatUnit = (value: number, unit: string) => {
-                    const unitFlag = `zero${unit.charAt(0).toUpperCase() + unit.slice(1)}`;
+                    const unitFlag = `zero${unit}`;
                     return displayOpts.has(unitFlag) ? value.toString().padStart(2, '0') : value.toString();
                 };
 
@@ -205,7 +217,7 @@ export const goalInfoVariable: ReplaceVariable = {
             }
 
             // Handle timecode display format (YY:MM:DD:HH:MM:SS)
-            if (displayOpts.has("timeCode")) {
+            if (displayOpts.has("timecode")) {
                 const now = new Date();
                 const startTime = new Date(`${goalState.config.streamInfo.startDate} ${goalState.config.streamInfo.startTime}`);
                 const endTime = new Date(`${goalState.config.streamInfo.endDate} ${goalState.config.streamInfo.endTime}`);
@@ -230,7 +242,7 @@ export const goalInfoVariable: ReplaceVariable = {
             }
 
             // Handle formatted time display (e.g., "2 hours, 30 minutes")
-            if (displayOpts.has("timeFormatted")) {
+            if (displayOpts.has("timeformatted")) {
                 const now = new Date();
                 const startTime = new Date(`${goalState.config.streamInfo.startDate} ${goalState.config.streamInfo.startTime}`);
                 const endTime = new Date(`${goalState.config.streamInfo.endDate} ${goalState.config.streamInfo.endTime}`);
@@ -288,35 +300,25 @@ export const goalInfoVariable: ReplaceVariable = {
                     current = goalState.localDonations?.data?.overall_total?.amount || 0;
                 }
 
-                // Check if using milestones as goals
-                if (goalState.config.mode.useMilestonesAsGoals &&
-                    Array.isArray(goalState.config.content.milestones) &&
-                    goalState.config.content.milestones.length > 0) {
-                    const nextMilestone = goalState.config.content.milestones
-                        .find((m: { title: string; amount: number }) => m.amount > current);
-                    goal = nextMilestone?.amount || goalState.config.donationGoal;
-                } else {
-                    goal = goalState.config.donationGoal;
-                }
+                goal = goalLogic.activeGoal(goalState.config.donationGoal, current,
+                    goalState.config.content.milestones, goalState.config.mode.useMilestonesAsGoals);
             }
 
             // Calculate percentage progress
-            const percentage = goal > 0 ? Math.round((current / goal) * 100) : 0;
+            const percentage = goalLogic.percentage(current, goal);
 
             // Handle single display options
             if (displayOpts.size === 1) {
-                if (displayOpts.has("amount")) return `${currencySymbol}${current}`;
-                if (displayOpts.has("goal")) return `${currencySymbol}${goal}`;
+                if (displayOpts.has("amount")) return `${currencySymbol}${goalLogic.money(current)}`;
+                if (displayOpts.has("goal")) return `${currencySymbol}${goalLogic.money(goal)}`;
                 if (displayOpts.has("percent")) return `${percentage}%`;
             }
 
-            // Format combined display
+            // Format the monetary ratio separately from its percentage annotation.
             const parts = [];
-            if (displayOpts.has("amount")) parts.push(`${currencySymbol}${current}`);
-            if (displayOpts.has("goal")) parts.push(`${currencySymbol}${goal}`);
-            if (displayOpts.has("percent")) parts.push(`(${percentage}%)`);
-
-            return parts.join("/");
+            if (displayOpts.has("amount")) parts.push(`${currencySymbol}${goalLogic.money(current)}`);
+            if (displayOpts.has("goal")) parts.push(`${currencySymbol}${goalLogic.money(goal)}`);
+            return parts.join("/") + (displayOpts.has("percent") ? ` (${percentage}%)` : '');
         } catch (error) {
             console.error('Error in goalAmount variable:', error);
             return "0";
@@ -332,7 +334,7 @@ export const goalMilestonesVariable: ReplaceVariable = {
     definition: {
         handle: "goalMilestones",
         description: "Gets milestone information with configurable display options",
-        usage: "goalMilestones[display?]",
+        usage: "goalMilestones[display?, id=goalId?]",
         examples: [
             {
                 usage: "goalMilestones",
@@ -380,11 +382,13 @@ export const goalMilestonesVariable: ReplaceVariable = {
     evaluator: async (_, ...params: string[]) => {
         try {
             // Retrieve goal state and validate milestone configuration
-            const goalState = await goalManager.getGoalData();
+            const selection = selectGoal(params);
+            params = selection.options;
+            const goalState = await goalManager.getGoalData(selection.id);
             if (!goalState?.config?.content?.milestones) return "No milestones configured";
 
             // Get currency symbol from config or use default '$'
-            const currencySymbol = goalState.config?.content?.templates?.default?.donations?.currencySymbol || '$';
+            const currencySymbol = goalState.config.content.templates[goalState.config.extraLife.useExtraLife ? 'extraLife' : 'default'].donations.currencySymbol || '$';
 
             // Initialize display options and range parameters
             const displayOpts = new Set<string>();  // Tracks which elements to display (amount, goal, percent, etc.)
@@ -425,7 +429,7 @@ export const goalMilestonesVariable: ReplaceVariable = {
                 currentAmount = goalState.localDonations?.data?.overall_total?.amount || 0;
             }
 
-            const milestones = goalState.config.content.milestones;
+            const milestones = goalLogic.milestones(goalState.config.content.milestones);
 
             /**
              * Formats the display of a single milestone based on selected display options.
@@ -436,7 +440,7 @@ export const goalMilestonesVariable: ReplaceVariable = {
              */
             const formatMilestoneDisplay = (milestone: { title: string; amount: number }, currentAmt: number) => {
                 // Calculate progress percentage, capped at 100%
-                const percent = Math.min(Math.round((currentAmt / milestone.amount) * 100), 100);
+                const percent = goalLogic.percentage(currentAmt, milestone.amount);
                 const parts = [];
 
                 // Build display string based on selected options
@@ -446,20 +450,17 @@ export const goalMilestonesVariable: ReplaceVariable = {
 
                 const amountParts = [];
                 if (displayOpts.has('amount')) {
-                    amountParts.push(`${currencySymbol}${currentAmt}`);
+                    amountParts.push(`${currencySymbol}${goalLogic.money(currentAmt)}`);
                 }
                 if (displayOpts.has('goal')) {
-                    amountParts.push(`${currencySymbol}${milestone.amount}`);
+                    amountParts.push(`${currencySymbol}${goalLogic.money(milestone.amount)}`);
                 }
                 if (amountParts.length > 0) {
                     parts.push(amountParts.join('/'));
                 }
 
-                if (displayOpts.has('percent')) {
-                    parts.push(`(${percent}%)`);
-                }
-
-                return parts.join(': ');
+                const text = parts.join(': ');
+                return text + (displayOpts.has('percent') ? (text ? ` (${percent}%)` : `${percent}%`) : '');
             };
 
             // Handle range display if specified
@@ -487,20 +488,20 @@ export const goalMilestonesVariable: ReplaceVariable = {
 
             // Find current milestone index for next/previous navigation
             const currentIndex = milestones.findIndex((m: { title: string; amount: number }) =>
-                currentAmount <= m.amount);
+                currentAmount < m.amount);
 
             // Handle 'next' milestone
             if (displayOpts.has("next")) {
-                if (currentIndex === -1 || currentIndex >= milestones.length - 1) {
+                if (currentIndex === -1) {
                     return "No more milestones";
                 }
-                const nextMilestone = milestones[currentIndex + 1];
+                const nextMilestone = milestones[currentIndex];
                 return formatMilestoneDisplay(nextMilestone, currentAmount);
             }
 
             // Handle 'previous' milestone
             if (displayOpts.has("previous")) {
-                if (currentIndex <= 0) return "No previous milestones";
+                if (currentIndex === 0) return "No previous milestones";
                 const prevIndex = currentIndex === -1 ? milestones.length - 1 : currentIndex - 1;
                 const prevMilestone = milestones[prevIndex];
                 return formatMilestoneDisplay(prevMilestone, currentAmount);

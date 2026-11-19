@@ -1,42 +1,54 @@
 <eos-container header="Donation Information" aria-label="Local Donor Data">
-    <div class="input-group" role="form" aria-label="Donation input form">
-        <firebot-radios
-            options="{ 
-                add: 'Add Donation', 
-                remove: 'Remove Specific Donation', 
-                resetUser: 'Reset User',
-                resetStreamElements: 'Reset All StreamElements Data',
-                resetExtraLife: 'Reset All ExtraLife Data',
-                resetLocalData: 'Reset All Local Data'
-            }"
-            model="effect.operation"
-            inline="true"
-            style="padding-bottom: 5px;"
-            aria-label="Donation Operation Selection">
-        </firebot-radios>
-        <div class="row" style="margin-bottom: 10px;" ng-if="effect.operation === 'add' || effect.operation === 'remove' || effect.operation === 'resetUser'">
+    <div role="form" aria-label="Goal manager settings">
+        <div class="row" style="margin-bottom: 15px;">
             <div class="col-md-6">
-                <firebot-input
-                    input-title="Name"
-                    model="effect.donorName"
-                    placeholder="Enter donor name"
-                    aria-label="Donor name input"
-                    aria-required="true">
-                </firebot-input>
+                <div class="input-group">
+                    <span class="input-group-addon">Goal</span>
+                    <select class="form-control" ng-model="effect.goalId"
+                        ng-options="goal.goalId as goal.goalId for goal in goals"
+                        aria-label="Select Goal ID to manage"></select>
+                </div>
             </div>
-            <div class="col-md-6" ng-if="effect.operation === 'add' || effect.operation === 'remove'">
-                <firebot-input
-                    input-title="Amount"
-                    model="effect.donationAmount"
-                    placeholder="Enter donation amount"
-                    aria-label="Donation amount input"
-                    aria-required="true">
-                </firebot-input>
+            <div class="col-md-6">
+                <div class="input-group">
+                    <span class="input-group-addon">Action</span>
+                    <select class="form-control" ng-model="effect.operation" aria-label="Select goal manager action">
+                        <option value="add">Add Donation</option>
+                        <option value="remove">Remove Specific Donation</option>
+                        <option value="resetUser">Reset User</option>
+                        <option value="resetStreamElements">Clear Cached StreamElements Data</option>
+                        <option value="resetExtraLife">Clear Cached Extra Life Data</option>
+                        <option value="resetLocalData">Reset Local Donations</option>
+                        <option value="resetRemoteGoals">Reset StreamElements Goals Now</option>
+                        <option value="hide">Hide Goal</option>
+                    </select>
+                </div>
             </div>
         </div>
-        <div class="alert alert-warning" ng-if="effect.operation === 'resetStreamElements' || effect.operation === 'resetExtraLife' || effect.operation === 'resetLocalData'">
-            Warning: This will reset all {{effect.operation === 'resetStreamElements' ? 'StreamElements' : 
-                     effect.operation === 'resetExtraLife' ? 'ExtraLife' : 'Local'}} donation data. This action cannot be undone.
+        <p class="text-warning" ng-if="goalListError" style="margin-bottom: 15px;">{{goalListError}}</p>
+        <p class="muted" ng-if="selectedGoal().reset.lastResetAt" style="margin-bottom: 15px;">Last StreamElements
+            reset: {{selectedGoal().reset.lastResetAt}}</p>
+        <div class="row" style="margin-bottom: 15px;"
+            ng-if="effect.operation === 'add' || effect.operation === 'remove' || effect.operation === 'resetUser'">
+            <div ng-class="effect.operation === 'resetUser' ? 'col-md-12' : 'col-md-6'">
+                <firebot-input input-title="Name" model="effect.donorName" placeholder-text="Donor name"
+                    aria-label="Donor name input" aria-required="true"></firebot-input>
+            </div>
+            <div class="col-md-6" ng-if="effect.operation === 'add' || effect.operation === 'remove'">
+                <firebot-input input-title="Amount" model="effect.donationAmount" placeholder-text="Donation amount"
+                    aria-label="Donation amount input" aria-required="true"></firebot-input>
+            </div>
+        </div>
+        <div class="alert alert-info"
+            ng-if="effect.operation === 'resetStreamElements' || effect.operation === 'resetExtraLife'">
+            Clears this goal's cache. Its next poll reloads API data.
+        </div>
+        <div class="alert alert-warning" ng-if="effect.operation === 'resetRemoteGoals'">
+            Resets all goal progress on this StreamElements account, affecting other widgets too. Local donations are
+            kept.
+        </div>
+        <div class="alert alert-warning" ng-if="effect.operation === 'resetLocalData'">
+            Removes this goal's manually added local donations.
         </div>
     </div>
 </eos-container>

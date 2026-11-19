@@ -2,7 +2,7 @@
   "name": "firebot-advanced-goal-tracker",
   "displayName": "Advanced Goal Tracker",
   "description": "Highly customizable Goal/Donation Tracking with Countdown",
-  "version": "1.0.3",
+  "version": "1.1.0",
   "author": "MorningStarGG",
   "publisher": "MorningStarGG",
   "homepage": "https://twitch.tv/MorningStarGG",
@@ -15,12 +15,18 @@
     "url": "https://github.com/MorningStarGG/firebot-goal-tracker/issues"
   },
   "main": "dist/MSGG-GoalTracker.js",
+  "pluginOutputName": "MSGG-GoalTracker",
+  "engines": { "node": ">=22.18.0" },
   "scripts": {
-    "build": "webpack",
-    "build:dev": "webpack --mode=development",
-    "build:prod": "webpack --mode=production",
+    "build": "tsdown",
+    "build:dev": "tsdown --watch",
+    "build:prod": "tsdown",
+    "pretest": "npm run build:prod",
     "test": "jest",
-    "watch": "webpack --watch --mode=development"
+    "typecheck": "tsc --noEmit",
+    "test:browser": "node tests/browser-smoke.cjs",
+    "watch": "tsdown --watch",
+    "release:prepare": "node scripts/prepare-release.cjs"
   },
   "keywords": [
     "firebot",
@@ -34,21 +40,17 @@
     "progress-bar"
   ],
   "devDependencies": {
-    "@crowbartools/firebot-custom-scripts-types": "^5.63.1",
-    "@types/jest": "^27.0.0",
-    "@types/jquery": "^3.5.32",
-    "jest": "^27.0.0",
-    "raw-loader": "^4.0.2",
-    "ts-jest": "^27.0.0",
-    "ts-loader": "^9.2.5",
-    "typescript": "^4.4.2",
-    "webpack": "^5.51.1",
-    "webpack-cli": "^4.8.0",
-    "terser-webpack-plugin": "^5.3.9",
-    "node-json-db": "^2.3.0"
+    "@crowbartools/firebot-types": "5.67.0",
+    "@types/jest": "^30.0.0",
+    "@types/node": "^22.19.0",
+    "angular": "1.8.3",
+    "jest": "^30.0.0",
+    "ts-jest": "^29.4.0",
+    "tsdown": "0.22.0",
+    "typescript": "^5.9.0",
+    "ws": "^8.18.0"
   },
   "dependencies": {
-    "jquery": "^3.7.1",
-    "node-json-db": "^2.3.0"
+    "node-json-db": "2.3.0"
   }
 }
